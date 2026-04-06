@@ -1,10 +1,12 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Bell, User } from "lucide-react"
 
-import { clearAuthCookie } from "@/lib/auth"
+import { clearAuthCookie, getUserRoleFromCookie } from "@/lib/auth"
 import { useAdminSocket } from "@/contexts/admin-socket-context"
+import type { UserRole } from "@/lib/access-control"
 
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
@@ -35,11 +37,17 @@ function formatNotifTime(iso: string) {
 
 export function Header() {
   const router = useRouter()
+  const [role, setRole] = useState<UserRole>("UNKNOWN")
   const {
     notifications,
     badgeCount,
     removeNotification,
   } = useAdminSocket()
+  const canSeeNotifications = role === "ADMIN" || role === "OWNER"
+
+  useEffect(() => {
+    setRole(getUserRoleFromCookie())
+  }, [])
 
   function handleLogout() {
     clearAuthCookie()
@@ -61,51 +69,53 @@ export function Header() {
       <Separator orientation="vertical" className="mr-2 h-4" />
       <div className="flex-1" />
       <div className="flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="size-4" />
-              {badgeCount > 0 ? (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
-                  {badgeCount > 9 ? "9+" : badgeCount}
-                </span>
-              ) : null}
-              <span className="sr-only">Notificaciones</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80">
-            <DropdownMenuLabel>Notificaciones</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {notifications.length === 0 ? (
-              <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-                No hay notificaciones recientes
-              </p>
-            ) : (
-              <div className="max-h-72 overflow-y-auto">
-                {notifications.map((n) => (
-                  <DropdownMenuItem
-                    key={n.id}
-                    className={cn(
-                      "flex cursor-pointer flex-col items-start gap-0.5 py-2",
-                      n.read && "opacity-60",
-                    )}
-                    onSelect={() => handleOpenNotification(n)}
-                  >
-                    <span className="font-medium">{n.title}</span>
-                    {n.subtitle ? (
-                      <span className="text-xs text-muted-foreground">
-                        {n.subtitle}
+        {canSeeNotifications ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="relative">
+                <Bell className="size-4" />
+                {badgeCount > 0 ? (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
+                    {badgeCount > 9 ? "9+" : badgeCount}
+                  </span>
+                ) : null}
+                <span className="sr-only">Notificaciones</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80">
+              <DropdownMenuLabel>Notificaciones</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {notifications.length === 0 ? (
+                <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                  No hay notificaciones recientes
+                </p>
+              ) : (
+                <div className="max-h-72 overflow-y-auto">
+                  {notifications.map((n) => (
+                    <DropdownMenuItem
+                      key={n.id}
+                      className={cn(
+                        "flex cursor-pointer flex-col items-start gap-0.5 py-2",
+                        n.read && "opacity-60",
+                      )}
+                      onSelect={() => handleOpenNotification(n)}
+                    >
+                      <span className="font-medium">{n.title}</span>
+                      {n.subtitle ? (
+                        <span className="text-xs text-muted-foreground">
+                          {n.subtitle}
+                        </span>
+                      ) : null}
+                      <span className="text-[10px] text-muted-foreground">
+                        {formatNotifTime(n.at)}
                       </span>
-                    ) : null}
-                    <span className="text-[10px] text-muted-foreground">
-                      {formatNotifTime(n.at)}
-                    </span>
-                  </DropdownMenuItem>
-                ))}
-              </div>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+                    </DropdownMenuItem>
+                  ))}
+                </div>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative size-8 rounded-full">
