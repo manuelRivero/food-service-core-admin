@@ -34,7 +34,10 @@ export interface Order {
   businessId: string
   customerId: string
   conversationId: string | null
+  /** Logística / cocina / entrega (`OrderStatus` en backend). */
   status: OrderStatus
+  /** Cobro acordado o registrado (`OrderPaymentStatus`); independiente de `status`. */
+  paymentStatus: string
   currencyCode: string
   totalAmount: number | null
   createdAt: Date
@@ -120,6 +123,7 @@ export const orders: Order[] = [
     customerId: "c0000001-0000-4000-8000-000000000001",
     conversationId: "f0000001-0000-4000-8000-000000000001",
     status: "delivered",
+    paymentStatus: "paid",
     currencyCode: "ARS",
     totalAmount: 125.0,
     createdAt: new Date("2026-04-01T12:00:00.000Z"),
@@ -176,6 +180,7 @@ export const orders: Order[] = [
     customerId: "c0000002-0000-4000-8000-000000000002",
     conversationId: "f0000002-0000-4000-8000-000000000002",
     status: "preparing",
+    paymentStatus: "deferred",
     currencyCode: "ARS",
     totalAmount: 89.5,
     createdAt: new Date("2026-04-02T14:30:00.000Z"),
@@ -194,6 +199,7 @@ export const orders: Order[] = [
     customerId: "c0000003-0000-4000-8000-000000000003",
     conversationId: null,
     status: "confirmed",
+    paymentStatus: "unpaid",
     currencyCode: "ARS",
     totalAmount: 245.0,
     createdAt: new Date("2026-04-03T20:15:00.000Z"),
@@ -216,6 +222,7 @@ export const orders: Order[] = [
     customerId: "c0000004-0000-4000-8000-000000000004",
     conversationId: "f0000004-0000-4000-8000-000000000004",
     status: "delivered",
+    paymentStatus: "paid",
     currencyCode: "ARS",
     totalAmount: 67.25,
     createdAt: new Date("2026-04-03T19:00:00.000Z"),
@@ -236,6 +243,7 @@ export const orders: Order[] = [
     customerId: "c0000005-0000-4000-8000-000000000005",
     conversationId: null,
     status: "cancelled",
+    paymentStatus: "deferred",
     currencyCode: "ARS",
     totalAmount: 190.0,
     createdAt: new Date("2026-04-04T10:00:00.000Z"),
@@ -259,6 +267,7 @@ export const orders: Order[] = [
     customerId: "c0000006-0000-4000-8000-000000000006",
     conversationId: "f0000006-0000-4000-8000-000000000006",
     status: "preparing",
+    paymentStatus: "deferred",
     currencyCode: "ARS",
     totalAmount: 312.5,
     createdAt: new Date("2026-04-04T21:45:00.000Z"),
@@ -277,6 +286,7 @@ export const orders: Order[] = [
     customerId: "c0000007-0000-4000-8000-000000000007",
     conversationId: null,
     status: "draft",
+    paymentStatus: "deferred",
     currencyCode: "ARS",
     totalAmount: 78.0,
     createdAt: new Date("2026-04-05T13:20:00.000Z"),
@@ -296,6 +306,7 @@ export const orders: Order[] = [
     customerId: "c0000008-0000-4000-8000-000000000008",
     conversationId: "f0000008-0000-4000-8000-000000000008",
     status: "delivered",
+    paymentStatus: "paid",
     currencyCode: "ARS",
     totalAmount: 156.75,
     createdAt: new Date("2026-04-05T22:00:00.000Z"),

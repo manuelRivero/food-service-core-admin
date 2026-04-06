@@ -37,7 +37,7 @@ function monthBoundsISO() {
 const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: ADMIN_ORDERS_STATUS_ALL, label: "Todos" },
   { value: "draft", label: "Borrador" },
-  { value: "confirmed", label: "Confirmado" },
+  { value: "placed", label: "Pedido recibido" },
   { value: "preparing", label: "En preparación" },
   { value: "shipped", label: "Enviado" },
   { value: "delivered", label: "Entregado" },

@@ -14,7 +14,7 @@ import { io, type Socket } from "socket.io-client"
 
 import { getAuthCookie } from "@/lib/auth"
 import { getSocketBaseUrl } from "@/lib/socket-base-url"
-import { ADMIN_ORDER_DELIVERY_LABEL_ES } from "@/lib/constants/orderWorkflow"
+import { getOrderStatusLabelEs } from "@/lib/constants/orderWorkflow"
 import {
   isAdminOrderRealtimePayload,
   isAdminReservationRealtimePayload,
@@ -51,16 +51,6 @@ type AdminSocketContextValue = {
 
 const AdminSocketContext = createContext<AdminSocketContextValue | null>(null)
 
-function orderStatusLabelEs(status: string): string {
-  const s = status.toLowerCase()
-  if (s in ADMIN_ORDER_DELIVERY_LABEL_ES) {
-    return ADMIN_ORDER_DELIVERY_LABEL_ES[
-      s as keyof typeof ADMIN_ORDER_DELIVERY_LABEL_ES
-    ]
-  }
-  return status
-}
-
 function notificationTitleForOrder(payload: AdminOrderRealtimePayload): string {
   switch (payload.type) {
     case "order.created":
@@ -82,7 +72,7 @@ function notificationSubtitleForOrder(
       }
       return payload.total != null ? String(payload.total) : undefined
     case "order.status_changed":
-      return orderStatusLabelEs(payload.status)
+      return getOrderStatusLabelEs(payload.status)
     default:
       return undefined
   }

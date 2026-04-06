@@ -1,5 +1,5 @@
 import { api } from "@/lib/api"
-import type { AdminOrderDeliveryStatus } from "@/lib/constants/orderWorkflow"
+import type { AdminPatchableOrderStatus } from "@/lib/constants/orderWorkflow"
 import type { Order, OrderCustomer, OrderLineItem } from "@/lib/data"
 
 /** Relativo a `NEXT_PUBLIC_API` (si ya incluye `/api`, no repetir `/api` en la ruta). */
@@ -70,6 +70,8 @@ export interface AdminOrderRaw {
   customer_id: string
   conversation_id: string | null
   status: string
+  /** Si el backend aún no lo envía, se asume `deferred`. */
+  payment_status?: string | null
   currency_code: string
   total_amount: string | number | null
   created_at: string
@@ -93,7 +95,7 @@ export interface PatchAdminOrderStatusResponseRaw {
 
 export async function patchAdminOrderStatus(
   id: string,
-  status: AdminOrderDeliveryStatus,
+  status: AdminPatchableOrderStatus,
 ) {
   const { data } = await api.patch<PatchAdminOrderStatusResponseRaw>(
     `${ADMIN_ORDERS_PATH}/${id}/status`,
@@ -182,6 +184,7 @@ export function mapAdminOrderToOrder(raw: AdminOrderRaw): Order {
     customerId: raw.customer_id,
     conversationId: raw.conversation_id,
     status: raw.status,
+    paymentStatus: raw.payment_status ?? "deferred",
     currencyCode: raw.currency_code,
     totalAmount: parseDecimal(raw.total_amount),
     createdAt: new Date(raw.created_at),

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { isAxiosError } from "axios"
-import { MoreHorizontal, Eye, RefreshCw, Package } from "lucide-react"
+import { Eye, Package } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -14,17 +14,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -40,14 +29,17 @@ import {
   EmptyMedia,
 } from "@/components/ui/empty"
 import { Badge } from "@/components/ui/badge"
-import { OrderStatusBadge } from "@/components/status-badge"
+import {
+  OrderPaymentStatusBadge,
+  OrderStatusBadge,
+} from "@/components/status-badge"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import {
-  ADMIN_ORDER_DELIVERY_LABEL_ES,
-  ADMIN_ORDER_DELIVERY_STATUSES,
-  type AdminOrderDeliveryStatus,
+  ADMIN_PATCH_ORDER_LABEL_ES,
+  getNextPatchableOrderStatus,
+  type AdminPatchableOrderStatus,
 } from "@/lib/constants/orderWorkflow"
 import { patchAdminOrderStatus } from "@/lib/requests/orders"
 import {
@@ -84,7 +76,7 @@ export function OrdersTable({
 
   const handleDeliveryStatusChange = async (
     order: Order,
-    newStatus: AdminOrderDeliveryStatus,
+    newStatus: AdminPatchableOrderStatus,
   ) => {
     if (order.status.toLowerCase() === newStatus) {
       return
@@ -96,7 +88,7 @@ export function OrdersTable({
       setSelectedOrder((prev) =>
         prev?.id === result.order.id ? result.order : prev,
       )
-      toast.success("Estado del pedido actualizado")
+      toast.success("Estado de envío actualizado")
       if (!result.customerNotified) {
         toast.warning(
           result.notificationReason
@@ -162,17 +154,19 @@ export function OrdersTable({
             <TableRow>
               <TableHead>N.º de pedido</TableHead>
               <TableHead>Cliente</TableHead>
-              <TableHead>Estado</TableHead>
+              <TableHead>Logística</TableHead>
+              <TableHead>Pago</TableHead>
               <TableHead>Total</TableHead>
               <TableHead>Fecha</TableHead>
-              <TableHead className="w-12">
-                <span className="sr-only">Acciones</span>
+              <TableHead className="min-w-[11rem] text-right">
+                Acciones
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {orders.map((order) => {
               const isNew = highlightOrderIds.includes(order.id)
+              const nextPatchStatus = getNextPatchableOrderStatus(order.status)
               return (
               <TableRow
                 key={order.id}
@@ -196,57 +190,41 @@ export function OrdersTable({
                   <OrderStatusBadge status={order.status} />
                 </TableCell>
                 <TableCell>
+                  <OrderPaymentStatusBadge paymentStatus={order.paymentStatus} />
+                </TableCell>
+                <TableCell>
                   {formatMoney(order.totalAmount, order.currencyCode)}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {formatDate(order.createdAt)}
                 </TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
+                <TableCell className="text-right">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleViewDetails(order)}
+                    >
+                      <Eye className="mr-1.5 size-3.5" />
+                      Ver detalle
+                    </Button>
+                    {nextPatchStatus ? (
                       <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8"
+                        type="button"
+                        size="sm"
                         disabled={updatingOrderId === order.id}
+                        onClick={() =>
+                          void handleDeliveryStatusChange(
+                            order,
+                            nextPatchStatus,
+                          )
+                        }
                       >
-                        <MoreHorizontal className="size-4" />
-                        <span className="sr-only">Abrir menú</span>
+                        Cambiar a {ADMIN_PATCH_ORDER_LABEL_ES[nextPatchStatus]}
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Acciones</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => handleViewDetails(order)}>
-                        <Eye className="mr-2 size-4" />
-                        Ver detalle
-                      </DropdownMenuItem>
-                      <DropdownMenuSub>
-                        <DropdownMenuSubTrigger
-                          disabled={updatingOrderId === order.id}
-                        >
-                          <RefreshCw className="mr-2 size-4" />
-                          Cambiar estado de entrega
-                        </DropdownMenuSubTrigger>
-                        <DropdownMenuSubContent>
-                          {ADMIN_ORDER_DELIVERY_STATUSES.map((s) => (
-                            <DropdownMenuItem
-                              key={s}
-                              disabled={
-                                updatingOrderId === order.id ||
-                                order.status.toLowerCase() === s
-                              }
-                              onClick={() =>
-                                void handleDeliveryStatusChange(order, s)
-                              }
-                            >
-                              {ADMIN_ORDER_DELIVERY_LABEL_ES[s]}
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuSubContent>
-                      </DropdownMenuSub>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    ) : null}
+                  </div>
                 </TableCell>
               </TableRow>
               )
@@ -273,8 +251,14 @@ export function OrdersTable({
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Estado</p>
+                  <p className="text-sm text-muted-foreground">Logística</p>
                   <OrderStatusBadge status={selectedOrder.status} />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Pago</p>
+                  <OrderPaymentStatusBadge
+                    paymentStatus={selectedOrder.paymentStatus}
+                  />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Cliente</p>
@@ -387,6 +371,27 @@ export function OrdersTable({
                   </div>
                 )}
               </div>
+
+              {(() => {
+                const next = getNextPatchableOrderStatus(selectedOrder.status)
+                if (!next) return null
+                return (
+                  <>
+                    <Separator />
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button
+                        type="button"
+                        disabled={updatingOrderId === selectedOrder.id}
+                        onClick={() =>
+                          void handleDeliveryStatusChange(selectedOrder, next)
+                        }
+                      >
+                        Cambiar a {ADMIN_PATCH_ORDER_LABEL_ES[next]}
+                      </Button>
+                    </div>
+                  </>
+                )
+              })()}
             </div>
           )}
         </DialogContent>
@@ -403,12 +408,11 @@ function OrdersTableSkeleton() {
           <TableRow>
             <TableHead>N.º de pedido</TableHead>
             <TableHead>Cliente</TableHead>
-            <TableHead>Estado</TableHead>
+            <TableHead>Logística</TableHead>
+            <TableHead>Pago</TableHead>
             <TableHead>Total</TableHead>
             <TableHead>Fecha</TableHead>
-            <TableHead className="w-12">
-              <span className="sr-only">Acciones</span>
-            </TableHead>
+            <TableHead className="min-w-[11rem] text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -424,13 +428,16 @@ function OrdersTableSkeleton() {
                 <Skeleton className="h-6 w-20 rounded-full" />
               </TableCell>
               <TableCell>
+                <Skeleton className="h-6 w-24 rounded-full" />
+              </TableCell>
+              <TableCell>
                 <Skeleton className="h-4 w-16" />
               </TableCell>
               <TableCell>
                 <Skeleton className="h-4 w-24" />
               </TableCell>
-              <TableCell>
-                <Skeleton className="size-8" />
+              <TableCell className="text-right">
+                <Skeleton className="ml-auto h-8 w-[12rem] max-w-full" />
               </TableCell>
             </TableRow>
           ))}
