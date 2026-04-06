@@ -41,14 +41,43 @@ const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "cancelled", label: "Cancelado" },
 ]
 
+/** Alineado al filtro de lista: `closed` cuenta como cancelada/cerrada. */
+function reservationMatchesFilter(
+  reservationStatus: string,
+  filter: string,
+): boolean {
+  if (filter === ADMIN_RESERVATIONS_STATUS_ALL) return true
+  const s = reservationStatus.toLowerCase()
+  const f = filter.toLowerCase()
+  if (f === "cancelled") {
+    return s === "cancelled" || s === "closed"
+  }
+  return s === f
+}
+
+const HIGHLIGHT_MS = 12_000
+const EDITING_HIGHLIGHT_MS = 90_000
+const CANCELLED_FLASH_MS = 10_000
+
 export default function ReservationsPage() {
-  const { subscribeToNewReservations } = useAdminSocket()
+  const { subscribeToReservationRealtime } = useAdminSocket()
   const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   )
+  const editingTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  )
+  const cancelledFlashTimersRef = useRef<
+    Map<string, ReturnType<typeof setTimeout>>
+  >(new Map())
+
   const [highlightReservationIds, setHighlightReservationIds] = useState<
     string[]
   >([])
+  const [editingReservationIds, setEditingReservationIds] = useState<string[]>(
+    [],
+  )
+  const [cancelledFlashIds, setCancelledFlashIds] = useState<string[]>([])
 
   const bounds = monthBoundsISO()
   const [page, setPage] = useState(1)
@@ -119,39 +148,119 @@ export default function ReservationsPage() {
   }, [loadReservations])
 
   useEffect(() => {
-    return subscribeToNewReservations((reservationId) => {
-      void (async () => {
-        try {
-          const res = await fetchAdminReservationById(reservationId)
-          setReservations((prev) => {
-            const existed = prev.some((r) => r.id === res.id)
-            if (!existed) {
-              setMeta((m) => ({ ...m, total: m.total + 1 }))
+    return subscribeToReservationRealtime((payload) => {
+      switch (payload.type) {
+        case "reservation.created": {
+          const reservationId = payload.reservationId
+          void (async () => {
+            try {
+              const res = await fetchAdminReservationById(reservationId)
+              if (!reservationMatchesFilter(res.status, statusFilter)) {
+                return
+              }
+              setReservations((prev) => {
+                const existed = prev.some((r) => r.id === res.id)
+                if (!existed) {
+                  setMeta((m) => ({ ...m, total: m.total + 1 }))
+                }
+                return [res, ...prev.filter((r) => r.id !== res.id)]
+              })
+              setEditingReservationIds((ids) =>
+                ids.filter((id) => id !== reservationId),
+              )
+              setHighlightReservationIds((ids) =>
+                ids.includes(reservationId) ? ids : [...ids, reservationId],
+              )
+              const prevT = highlightTimersRef.current.get(reservationId)
+              if (prevT) clearTimeout(prevT)
+              const t = setTimeout(() => {
+                setHighlightReservationIds((ids) =>
+                  ids.filter((x) => x !== reservationId),
+                )
+                highlightTimersRef.current.delete(reservationId)
+              }, HIGHLIGHT_MS)
+              highlightTimersRef.current.set(reservationId, t)
+            } catch {
+              /* noop */
             }
-            return [res, ...prev.filter((r) => r.id !== res.id)]
-          })
-          setHighlightReservationIds((ids) =>
+          })()
+          break
+        }
+        case "reservation.cancelled": {
+          const reservationId = payload.reservationId
+          void (async () => {
+            try {
+              const res = await fetchAdminReservationById(reservationId)
+              const matches = reservationMatchesFilter(res.status, statusFilter)
+              setReservations((prev) => {
+                const existed = prev.some((r) => r.id === res.id)
+                if (!matches) {
+                  if (existed) {
+                    setMeta((m) => ({
+                      ...m,
+                      total: Math.max(0, m.total - 1),
+                    }))
+                  }
+                  return prev.filter((r) => r.id !== res.id)
+                }
+                if (!existed) {
+                  setMeta((m) => ({ ...m, total: m.total + 1 }))
+                }
+                return [res, ...prev.filter((r) => r.id !== res.id)]
+              })
+              setEditingReservationIds((ids) =>
+                ids.filter((id) => id !== reservationId),
+              )
+              const et = editingTimersRef.current.get(reservationId)
+              if (et) {
+                clearTimeout(et)
+                editingTimersRef.current.delete(reservationId)
+              }
+              setCancelledFlashIds((ids) =>
+                ids.includes(reservationId) ? ids : [...ids, reservationId],
+              )
+              const prevCf = cancelledFlashTimersRef.current.get(reservationId)
+              if (prevCf) clearTimeout(prevCf)
+              const t = setTimeout(() => {
+                setCancelledFlashIds((ids) =>
+                  ids.filter((x) => x !== reservationId),
+                )
+                cancelledFlashTimersRef.current.delete(reservationId)
+              }, CANCELLED_FLASH_MS)
+              cancelledFlashTimersRef.current.set(reservationId, t)
+            } catch {
+              /* noop */
+            }
+          })()
+          break
+        }
+        case "reservation.edit_started": {
+          const reservationId = payload.reservationId
+          setEditingReservationIds((ids) =>
             ids.includes(reservationId) ? ids : [...ids, reservationId],
           )
-          const prevT = highlightTimersRef.current.get(reservationId)
-          if (prevT) clearTimeout(prevT)
+          const prevEt = editingTimersRef.current.get(reservationId)
+          if (prevEt) clearTimeout(prevEt)
           const t = setTimeout(() => {
-            setHighlightReservationIds((ids) =>
+            setEditingReservationIds((ids) =>
               ids.filter((x) => x !== reservationId),
             )
-            highlightTimersRef.current.delete(reservationId)
-          }, 12000)
-          highlightTimersRef.current.set(reservationId, t)
-        } catch {
-          /* noop */
+            editingTimersRef.current.delete(reservationId)
+          }, EDITING_HIGHLIGHT_MS)
+          editingTimersRef.current.set(reservationId, t)
+          break
         }
-      })()
+        default:
+          break
+      }
     })
-  }, [subscribeToNewReservations])
+  }, [subscribeToReservationRealtime, statusFilter])
 
   useEffect(() => {
     return () => {
       highlightTimersRef.current.forEach((t) => clearTimeout(t))
+      editingTimersRef.current.forEach((t) => clearTimeout(t))
+      cancelledFlashTimersRef.current.forEach((t) => clearTimeout(t))
     }
   }, [])
 
@@ -234,6 +343,8 @@ export default function ReservationsPage() {
         reservations={reservations}
         isLoading={loading}
         highlightReservationIds={highlightReservationIds}
+        editingReservationIds={editingReservationIds}
+        cancelledFlashIds={cancelledFlashIds}
       />
 
       {!loading && meta.totalPages > 1 ? (

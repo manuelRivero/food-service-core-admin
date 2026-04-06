@@ -46,13 +46,20 @@ import type { Reservation } from "@/lib/data"
 interface ReservationsTableProps {
   reservations: Reservation[]
   isLoading?: boolean
+  /** Nueva reserva (socket `reservation.created`). */
   highlightReservationIds?: string[]
+  /** Cliente en flujo editar (socket `reservation.edit_started`). */
+  editingReservationIds?: string[]
+  /** Fila actualizada por cancelación (socket `reservation.cancelled`). */
+  cancelledFlashIds?: string[]
 }
 
 export function ReservationsTable({
   reservations,
   isLoading,
   highlightReservationIds = [],
+  editingReservationIds = [],
+  cancelledFlashIds = [],
 }: ReservationsTableProps) {
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
@@ -118,12 +125,22 @@ export function ReservationsTable({
           <TableBody>
             {reservations.map((reservation) => {
               const isNew = highlightReservationIds.includes(reservation.id)
+              const isEditing = editingReservationIds.includes(reservation.id)
+              const isCancelledFlash = cancelledFlashIds.includes(reservation.id)
               return (
               <TableRow
                 key={reservation.id}
                 className={cn(
-                  isNew &&
-                    "bg-emerald-500/[0.07] transition-colors dark:bg-emerald-500/10",
+                  "transition-colors",
+                  isCancelledFlash &&
+                    "bg-rose-500/[0.06] dark:bg-rose-500/10",
+                  !isCancelledFlash &&
+                    isEditing &&
+                    "bg-amber-500/[0.07] dark:bg-amber-500/10",
+                  !isCancelledFlash &&
+                    !isEditing &&
+                    isNew &&
+                    "bg-emerald-500/[0.07] dark:bg-emerald-500/10",
                 )}
               >
                 <TableCell className="font-medium">
@@ -132,6 +149,14 @@ export function ReservationsTable({
                     {isNew ? (
                       <Badge variant="secondary" className="text-[10px] font-normal">
                         Nuevo
+                      </Badge>
+                    ) : null}
+                    {isEditing && !isNew && !isCancelledFlash ? (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-500/40 text-[10px] font-normal text-amber-900 dark:text-amber-200"
+                      >
+                        Editando
                       </Badge>
                     ) : null}
                   </div>

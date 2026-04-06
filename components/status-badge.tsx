@@ -55,6 +55,10 @@ const RESERVATION_STATUS_BADGE: Record<
     label: "Cancelado",
     className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
   },
+  closed: {
+    label: "Cerrada",
+    className: "bg-zinc-200 text-zinc-800 dark:bg-zinc-800/50 dark:text-zinc-300",
+  },
 }
 
 export function OrderStatusBadge({ status }: { status: string }) {

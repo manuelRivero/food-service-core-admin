@@ -14,6 +14,10 @@ import { io, type Socket } from "socket.io-client"
 
 import { getAuthCookie } from "@/lib/auth"
 import { getSocketBaseUrl } from "@/lib/socket-base-url"
+import {
+  isAdminReservationRealtimePayload,
+  type AdminReservationRealtimePayload,
+} from "@/lib/types/admin-realtime"
 
 export type AdminNotificationKind = "order" | "reservation"
 
@@ -36,23 +40,34 @@ export type AdminOrderSocketPayload = {
   at: string
 }
 
-export type AdminReservationSocketPayload = {
-  type: string
-  businessId: string
-  reservationId: string
-  at: string
-}
-
 type AdminSocketContextValue = {
   isConnected: boolean
   notifications: AdminNotification[]
   badgeCount: number
   removeNotification: (id: string) => void
   subscribeToNewOrders: (cb: (orderId: string) => void) => () => void
-  subscribeToNewReservations: (cb: (reservationId: string) => void) => () => void
+  /** Evento `admin:reservation` con payload discriminado (created / cancelled / edit_started). */
+  subscribeToReservationRealtime: (
+    cb: (payload: AdminReservationRealtimePayload) => void,
+  ) => () => void
 }
 
 const AdminSocketContext = createContext<AdminSocketContextValue | null>(null)
+
+function notificationTitleForReservation(
+  payload: AdminReservationRealtimePayload,
+): string {
+  switch (payload.type) {
+    case "reservation.created":
+      return "Nueva reserva"
+    case "reservation.cancelled":
+      return "Reserva cancelada"
+    case "reservation.edit_started":
+      return "Edición de reserva"
+    default:
+      return "Reserva"
+  }
+}
 
 export function AdminSocketProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -63,7 +78,9 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
   const [notifications, setNotifications] = useState<AdminNotification[]>([])
 
   const orderListenersRef = useRef(new Set<(id: string) => void>())
-  const reservationListenersRef = useRef(new Set<(id: string) => void>())
+  const reservationRealtimeListenersRef = useRef(
+    new Set<(payload: AdminReservationRealtimePayload) => void>(),
+  )
   const socketRef = useRef<Socket | null>(null)
 
   const subscribeToNewOrders = useCallback((cb: (orderId: string) => void) => {
@@ -73,11 +90,11 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
     }
   }, [])
 
-  const subscribeToNewReservations = useCallback(
-    (cb: (reservationId: string) => void) => {
-      reservationListenersRef.current.add(cb)
+  const subscribeToReservationRealtime = useCallback(
+    (cb: (payload: AdminReservationRealtimePayload) => void) => {
+      reservationRealtimeListenersRef.current.add(cb)
       return () => {
-        reservationListenersRef.current.delete(cb)
+        reservationRealtimeListenersRef.current.delete(cb)
       }
     },
     [],
@@ -166,11 +183,14 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
       })
     })
 
-    socket.on("admin:reservation", (p: AdminReservationSocketPayload) => {
-      const reservationId = p.reservationId
-      reservationListenersRef.current.forEach((fn) => {
+    socket.on("admin:reservation", (raw: unknown) => {
+      if (!isAdminReservationRealtimePayload(raw)) {
+        return
+      }
+      const p = raw
+      reservationRealtimeListenersRef.current.forEach((fn) => {
         try {
-          fn(reservationId)
+          fn(p)
         } catch {
           /* noop */
         }
@@ -178,14 +198,18 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
 
       const path = pathnameRef.current
       const read = path === "/reservations"
+      const title = notificationTitleForReservation(p)
+      const subtitle =
+        p.type === "reservation.cancelled" ? `Estado: ${p.status}` : undefined
 
       setNotifications((prev) => {
         const next: AdminNotification = {
-          id: `reservation-${reservationId}-${Date.now()}`,
+          id: `${p.type}-${p.reservationId}-${Date.now()}`,
           kind: "reservation",
-          resourceId: reservationId,
+          resourceId: p.reservationId,
           at: p.at,
-          title: "Nueva reserva",
+          title,
+          subtitle,
           read,
         }
         return [next, ...prev].slice(0, 40)
@@ -207,7 +231,7 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
       badgeCount,
       removeNotification,
       subscribeToNewOrders,
-      subscribeToNewReservations,
+      subscribeToReservationRealtime,
     }),
     [
       isConnected,
@@ -215,7 +239,7 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
       badgeCount,
       removeNotification,
       subscribeToNewOrders,
-      subscribeToNewReservations,
+      subscribeToReservationRealtime,
     ],
   )
 
