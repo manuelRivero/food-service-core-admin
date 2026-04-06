@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -43,6 +43,8 @@ function safeRedirectPath(from: string | null): string {
 function LoginForm() {
   const router = useRouter()
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const emailInputRef = useRef<HTMLInputElement | null>(null)
+  const passwordInputRef = useRef<HTMLInputElement | null>(null)
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -85,6 +87,16 @@ function LoginForm() {
     }
   }
 
+  function submitWithFallbackValues() {
+    const email = emailInputRef.current?.value?.trim() ?? ""
+    const password = passwordInputRef.current?.value ?? ""
+    if (!email || !password) {
+      setSubmitError("Completa correo y contraseña para continuar.")
+      return
+    }
+    void onSubmit({ email, password })
+  }
+
   return (
     <Card className="w-full max-w-md shadow-lg">
       <CardHeader className="space-y-1 text-center">
@@ -102,49 +114,63 @@ function LoginForm() {
             <FormField
               control={form.control}
               name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Correo</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="email"
-                      autoComplete="email"
-                      placeholder="tu@empresa.com"
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault()
-                          void form.handleSubmit(onSubmit)()
-                        }
-                      }}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              render={({ field }) => {
+                const { ref, ...fieldProps } = field
+                return (
+                  <FormItem>
+                    <FormLabel>Correo</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="email"
+                        autoComplete="email"
+                        placeholder="tu@empresa.com"
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault()
+                            void form.handleSubmit(onSubmit, submitWithFallbackValues)()
+                          }
+                        }}
+                        {...fieldProps}
+                        ref={(element) => {
+                          ref(element)
+                          emailInputRef.current = element
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )
+              }}
             />
             <FormField
               control={form.control}
               name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Contraseña</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="password"
-                      autoComplete="current-password"
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault()
-                          void form.handleSubmit(onSubmit)()
-                        }
-                      }}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              render={({ field }) => {
+                const { ref, ...fieldProps } = field
+                return (
+                  <FormItem>
+                    <FormLabel>Contraseña</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="password"
+                        autoComplete="current-password"
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault()
+                            void form.handleSubmit(onSubmit, submitWithFallbackValues)()
+                          }
+                        }}
+                        {...fieldProps}
+                        ref={(element) => {
+                          ref(element)
+                          passwordInputRef.current = element
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )
+              }}
             />
             {submitError ? (
               <p className="text-center text-sm text-destructive" role="alert">
@@ -156,7 +182,10 @@ function LoginForm() {
               className="w-full"
               disabled={form.formState.isSubmitting}
               onClick={() => {
-                void form.handleSubmit(onSubmit)()
+                void form.handleSubmit(onSubmit, submitWithFallbackValues)()
+              }}
+              onTouchEnd={() => {
+                void form.handleSubmit(onSubmit, submitWithFallbackValues)()
               }}
             >
               {form.formState.isSubmitting ? "Entrando…" : "Entrar"}
