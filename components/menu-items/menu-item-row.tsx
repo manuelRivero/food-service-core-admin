@@ -19,14 +19,6 @@ export function MenuItemRow({
   onViewDetails,
   onDelete,
 }: MenuItemRowProps) {
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat("es-AR", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    }).format(date)
-  }
-
   return (
     <TableRow>
       <TableCell>
@@ -46,7 +38,7 @@ export function MenuItemRow({
         </div>
       </TableCell>
       <TableCell className="text-muted-foreground">
-        {item.categoryName ?? item.categoryId ?? "—"}
+        {item.categoryName ?? "—"}
       </TableCell>
       <TableCell>
         <Badge variant={item.available ? "default" : "secondary"}>
@@ -60,9 +52,6 @@ export function MenuItemRow({
       </TableCell>
       <TableCell className="text-center tabular-nums">
         {item.servesPeople ?? "—"}
-      </TableCell>
-      <TableCell className="text-muted-foreground">
-        {formatDate(item.createdAt)}
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">

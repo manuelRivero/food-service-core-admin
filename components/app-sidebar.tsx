@@ -40,6 +40,7 @@ const navItems: {
     title: "Menú",
     href: "/menu-items",
     icon: UtensilsCrossed,
+    allowedRoles: ["ADMIN", "OWNER"],
   },
   {
     title: "Reservas",
@@ -50,6 +51,7 @@ const navItems: {
     title: "Mensajes",
     href: "/messages",
     icon: MessageSquare,
+    allowedRoles: ["ADMIN", "OWNER"],
   },
   {
     title: "Check-in",

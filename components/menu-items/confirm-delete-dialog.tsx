@@ -15,6 +15,7 @@ import type { MenuItem } from "./types"
 interface ConfirmDeleteDialogProps {
   item: MenuItem | null
   open: boolean
+  isLoading?: boolean
   onOpenChange: (open: boolean) => void
   onConfirm: () => void
 }
@@ -22,6 +23,7 @@ interface ConfirmDeleteDialogProps {
 export function ConfirmDeleteDialog({
   item,
   open,
+  isLoading = false,
   onOpenChange,
   onConfirm,
 }: ConfirmDeleteDialogProps) {
@@ -39,12 +41,13 @@ export function ConfirmDeleteDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel disabled={isLoading}>Cancelar</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
+            disabled={isLoading}
             className="bg-destructive text-white hover:bg-destructive/90"
           >
-            Eliminar
+            {isLoading ? "Eliminando..." : "Eliminar"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

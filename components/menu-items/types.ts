@@ -4,6 +4,8 @@ export interface MenuItem {
   description: string | null
   categoryId: string | null
   categoryName?: string | null
+  menuCategoryId?: string | null
+  menuCategoryName?: string | null
   imageUrl: string | null
   available: boolean
   featured: boolean
