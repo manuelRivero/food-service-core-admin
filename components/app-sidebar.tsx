@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ShoppingCart, CalendarDays, LayoutDashboard, QrCode, Truck, MessageSquare } from "lucide-react"
+import { ShoppingCart, CalendarDays, LayoutDashboard, QrCode, Truck, MessageSquare, UtensilsCrossed } from "lucide-react"
 
 import {
   Sidebar,
@@ -35,6 +35,11 @@ const navItems: {
     title: "Pedidos",
     href: "/orders",
     icon: ShoppingCart,
+  },
+  {
+    title: "Menú",
+    href: "/menu-items",
+    icon: UtensilsCrossed,
   },
   {
     title: "Reservas",
