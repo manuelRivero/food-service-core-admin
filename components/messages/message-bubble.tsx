@@ -1,7 +1,9 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { Check, CheckCheck } from "lucide-react"
+import { Bot, Check, CheckCheck, Smile } from "lucide-react"
+
+export type MessageSenderKind = "bot" | "admin" | "customer"
 
 export interface Message {
   id: string
@@ -9,6 +11,7 @@ export interface Message {
   timestamp: string
   isSent: boolean
   isRead?: boolean
+  senderKind?: MessageSenderKind
 }
 
 interface MessageBubbleProps {
@@ -38,6 +41,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             message.isSent ? "text-primary-foreground/70" : "text-muted-foreground"
           )}
         >
+          {message.isSent && message.senderKind === "bot" ? (
+            <Bot className="size-6" />
+          ) : null}
+          {message.isSent && message.senderKind === "admin" ? (
+            <Smile className="size-6" />
+          ) : null}
           <span className="text-[10px]">{message.timestamp}</span>
           {message.isSent && (
             message.isRead ? (

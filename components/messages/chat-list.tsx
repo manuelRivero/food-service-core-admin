@@ -2,7 +2,6 @@
 
 import { Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChatItem, type ChatItemData } from "./chat-item"
 
 interface ChatListProps {
@@ -25,7 +24,7 @@ export function ChatList({
   )
 
   return (
-    <div className="flex h-full flex-col border-r">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-r">
       <div className="border-b p-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -37,24 +36,28 @@ export function ChatList({
           />
         </div>
       </div>
-      <ScrollArea className="flex-1">
-        <div className="flex flex-col gap-1 p-2">
-          {filteredChats.length === 0 ? (
-            <p className="p-4 text-center text-sm text-muted-foreground">
-              No se encontraron conversaciones
-            </p>
-          ) : (
-            filteredChats.map((chat) => (
-              <ChatItem
-                key={chat.id}
-                chat={chat}
-                isSelected={selectedChatId === chat.id}
-                onClick={() => onSelectChat(chat.id)}
-              />
-            ))
-          )}
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div className="h-full w-full overflow-y-auto">
+          <div className="w-full min-w-0 p-2">
+          <div className="flex flex-col gap-1">
+            {filteredChats.length === 0 ? (
+              <p className="p-4 text-center text-sm text-muted-foreground">
+                No se encontraron conversaciones
+              </p>
+            ) : (
+              filteredChats.map((chat) => (
+                <ChatItem
+                  key={chat.id}
+                  chat={chat}
+                  isSelected={selectedChatId === chat.id}
+                  onClick={() => onSelectChat(chat.id)}
+                />
+              ))
+            )}
+          </div>
+          </div>
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }

@@ -28,7 +28,7 @@ export function ChatItem({ chat, isSelected, onClick }: ChatItemProps) {
     <button
       onClick={onClick}
       className={cn(
-        "flex w-full items-start gap-3 rounded-lg p-3 text-left transition-colors hover:bg-accent",
+        "flex w-full min-w-0 items-start gap-3 overflow-hidden rounded-lg p-3 text-left transition-colors hover:bg-accent",
         isSelected && "bg-accent"
       )}
     >
@@ -45,7 +45,7 @@ export function ChatItem({ chat, isSelected, onClick }: ChatItemProps) {
           <span className="absolute bottom-0 right-0 size-3 rounded-full border-2 border-background bg-green-500" />
         )}
       </div>
-      <div className="flex-1 overflow-hidden">
+      <div className="min-w-0 flex-1 overflow-hidden">
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <span className="truncate font-medium">{chat.customerName}</span>
@@ -65,8 +65,8 @@ export function ChatItem({ chat, isSelected, onClick }: ChatItemProps) {
             {chat.timestamp}
           </span>
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <p className="truncate text-sm text-muted-foreground">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <p className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
             {chat.lastMessage}
           </p>
           {chat.unreadCount > 0 && (

@@ -9,7 +9,10 @@ import { ChatList } from "@/components/messages/chat-list"
 import { ChatWindow } from "@/components/messages/chat-window"
 import { EmptyState } from "@/components/messages/empty-state"
 import type { ChatItemData } from "@/components/messages/chat-item"
-import type { Message } from "@/components/messages/message-bubble"
+import type {
+  Message,
+  MessageSenderKind,
+} from "@/components/messages/message-bubble"
 import {
   fetchAdminWhatsappConversationBotStatus,
   fetchAdminWhatsappMessages,
@@ -95,17 +98,39 @@ function buildRealtimeMessage(
   payload: AdminWhatsappRealtimePayload,
   chat?: ChatItemData,
 ): Message {
+  if (payload.message.trim() === BOT_REENGAGE_MESSAGE) {
+    return {
+      id: payload.messageId,
+      content: payload.message,
+      timestamp: toChatTimestamp(payload.createdAt),
+      isSent: true,
+      isRead: true,
+      senderKind: "admin",
+    }
+  }
+
+  const isSent = isOutboundMessage({
+    ...payload,
+    customerName: chat?.customerName,
+    customerPhone: chat?.customerPhone,
+  })
   return {
     id: payload.messageId,
     content: payload.message,
     timestamp: toChatTimestamp(payload.createdAt),
-    isSent: isOutboundMessage({
-      ...payload,
-      customerName: chat?.customerName,
-      customerPhone: chat?.customerPhone,
-    }),
+    isSent,
     isRead: true,
+    senderKind: resolveSenderKind(payload, isSent),
   }
+}
+
+function resolveSenderKind(
+  payload: { sender: string; isAiGenerated: boolean },
+  isSent: boolean,
+): MessageSenderKind {
+  if (!isSent) return "customer"
+  if (payload.isAiGenerated) return "bot"
+  return "admin"
 }
 
 export default function MessagesPage() {
@@ -144,17 +169,52 @@ export default function MessagesPage() {
       for (const item of data.items) {
         const conversationId = item.conversation.id
         if (!conversationId) continue
+        if (item.message.trim() === BOT_REENGAGE_MESSAGE) {
+          const message: Message = {
+            id: item.id,
+            content: item.message,
+            timestamp: toChatTimestamp(item.createdAt),
+            isSent: true,
+            isRead: true,
+            senderKind: "admin",
+          }
+          nextMessages[conversationId] = [
+            message,
+            ...(nextMessages[conversationId] ?? []),
+          ]
+          if (!nextChatsMap.has(conversationId)) {
+            nextChatsMap.set(conversationId, {
+              id: conversationId,
+              customerName:
+                item.conversation.customer.name?.trim() ||
+                item.conversation.customer.phoneNumber ||
+                "Cliente",
+              customerPhone: item.conversation.customer.phoneNumber,
+              lastMessage: item.message,
+              timestamp: toChatTimestamp(item.createdAt),
+              unreadCount: 0,
+              isOnline: false,
+              botEnabled: item.conversation.botEnabled ?? true,
+            })
+          }
+          nextBotEnabledByConversation[conversationId] =
+            item.conversation.botEnabled ?? true
+          continue
+        }
+
+        const isSent = isOutboundMessage({
+          ...item,
+          customerName: item.conversation.customer.name,
+          customerPhone: item.conversation.customer.phoneNumber,
+        })
 
         const message: Message = {
           id: item.id,
           content: item.message,
           timestamp: toChatTimestamp(item.createdAt),
-          isSent: isOutboundMessage({
-            ...item,
-            customerName: item.conversation.customer.name,
-            customerPhone: item.conversation.customer.phoneNumber,
-          }),
+          isSent,
           isRead: true,
+          senderKind: resolveSenderKind(item, isSent),
         }
 
         nextMessages[conversationId] = [
