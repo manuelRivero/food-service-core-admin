@@ -3,10 +3,12 @@
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { Bot, Smile } from "lucide-react"
 
 export interface ChatItemData {
   id: string
   customerName: string
+  customerPhone?: string
   avatar?: string
   lastMessage: string
   timestamp: string
@@ -45,7 +47,20 @@ export function ChatItem({ chat, isSelected, onClick }: ChatItemProps) {
       </div>
       <div className="flex-1 overflow-hidden">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate font-medium">{chat.customerName}</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-medium">{chat.customerName}</span>
+            {chat.botEnabled ? (
+              <Bot
+                className={cn("size-7 shrink-0 text-green-600")}
+                aria-label="Chat con bot activo"
+              />
+            ) : (
+              <Smile
+                className={cn("size-7 shrink-0 text-muted-foreground")}
+                aria-label="Chat en modo humano"
+              />
+            )}
+          </div>
           <span className="shrink-0 text-xs text-muted-foreground">
             {chat.timestamp}
           </span>

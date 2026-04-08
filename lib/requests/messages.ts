@@ -74,6 +74,11 @@ interface AdminWhatsappConversationBotStatusRaw {
   botEnabled?: boolean
 }
 
+interface AdminWhatsappSendMessageRaw {
+  id?: string
+  message_id?: string
+}
+
 function toNonEmpty(value: unknown): string {
   return typeof value === "string" ? value : ""
 }
@@ -156,4 +161,20 @@ export async function patchAdminWhatsappConversationBotStatus(
     { enabled },
   )
   return Boolean(data.botEnabled ?? data.enabled ?? enabled)
+}
+
+function adminWhatsappConversationMessagesPath(conversationId: string): string {
+  return `/admin/whatsapp/conversations/${conversationId}/messages`
+}
+
+export async function sendAdminWhatsappMessage(
+  conversationId: string,
+  message: string,
+): Promise<{ id: string | null }> {
+  const { data } = await api.post<AdminWhatsappSendMessageRaw>(
+    adminWhatsappConversationMessagesPath(conversationId),
+    { message },
+  )
+  const id = data.id ?? data.message_id ?? null
+  return { id: typeof id === "string" && id.trim() ? id : null }
 }

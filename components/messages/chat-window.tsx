@@ -15,6 +15,7 @@ interface ChatWindowProps {
   onSendMessage: (message: string) => void
   botEnabled: boolean
   isTogglingBot?: boolean
+  isSendingMessage?: boolean
   onToggleBot: (enabled: boolean) => void
 }
 
@@ -24,6 +25,7 @@ export function ChatWindow({
   onSendMessage,
   botEnabled,
   isTogglingBot = false,
+  isSendingMessage = false,
   onToggleBot,
 }: ChatWindowProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -54,9 +56,6 @@ export function ChatWindow({
           </div>
           <div>
             <h2 className="font-semibold">{chat.customerName}</h2>
-            <p className="text-xs text-muted-foreground">
-              {chat.isOnline ? "En linea" : "Visto por ultima vez hace 2h"}
-            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -95,7 +94,12 @@ export function ChatWindow({
       </div>
 
       {/* Message Input */}
-      {!botEnabled ? <MessageInput onSendMessage={onSendMessage} /> : null}
+      {!botEnabled ? (
+        <MessageInput
+          onSendMessage={onSendMessage}
+          disabled={isSendingMessage}
+        />
+      ) : null}
     </div>
   )
 }

@@ -14,8 +14,12 @@ import {
   fetchAdminWhatsappConversationBotStatus,
   fetchAdminWhatsappMessages,
   patchAdminWhatsappConversationBotStatus,
+  sendAdminWhatsappMessage,
 } from "@/lib/requests/messages"
 import type { AdminWhatsappRealtimePayload } from "@/lib/types/admin-realtime"
+
+const BOT_REENGAGE_MESSAGE =
+  "Muchas gracias por escribirnos. Fue un placer ayudarte. Te dejamos nuevamente con nuestro asistente para que pueda acompañarte en tus próximas consultas. Estamos para vos siempre."
 
 function toChatTimestamp(value: string): string {
   const d = new Date(value)
@@ -26,21 +30,80 @@ function toChatTimestamp(value: string): string {
   })
 }
 
+function normalizeSender(value: string): string {
+  return value.replace(/\s+/g, "").toLowerCase()
+}
+
+function isInboundForCustomer(
+  sender: string,
+  customerName?: string | null,
+  customerPhone?: string | null,
+): boolean {
+  const normalizedSender = normalizeSender(sender)
+  const normalizedName = normalizeSender(customerName ?? "")
+  const normalizedPhone = (customerPhone ?? "").replace(/\D+/g, "")
+  const senderDigits = sender.replace(/\D+/g, "")
+
+  if (normalizedName && normalizedSender === normalizedName) return true
+  if (normalizedPhone && senderDigits && normalizedPhone === senderDigits) {
+    return true
+  }
+  return false
+}
+
 function isOutboundMessage(payload: {
   sender: string
   isAiGenerated: boolean
+  customerName?: string | null
+  customerPhone?: string | null
 }): boolean {
   if (payload.isAiGenerated) return true
-  const normalized = payload.sender.trim().toLowerCase()
-  return normalized.includes("bot") || normalized.includes("ai")
+  const normalizedSender = normalizeSender(payload.sender)
+  if (!normalizedSender) return false
+
+  if (
+    isInboundForCustomer(
+      payload.sender,
+      payload.customerName,
+      payload.customerPhone,
+    )
+  ) {
+    return false
+  }
+
+  const outboundMarkers = [
+    "admin",
+    "agent",
+    "agente",
+    "bot",
+    "assistant",
+    "asistente",
+    "ai",
+    "ia",
+    "system",
+    "sistema",
+  ]
+  if (outboundMarkers.some((marker) => normalizedSender.includes(marker))) {
+    return true
+  }
+
+  // Fallback conservador: si no se puede inferir claramente, tratar como entrante.
+  return false
 }
 
-function buildRealtimeMessage(payload: AdminWhatsappRealtimePayload): Message {
+function buildRealtimeMessage(
+  payload: AdminWhatsappRealtimePayload,
+  chat?: ChatItemData,
+): Message {
   return {
     id: payload.messageId,
     content: payload.message,
     timestamp: toChatTimestamp(payload.createdAt),
-    isSent: isOutboundMessage(payload),
+    isSent: isOutboundMessage({
+      ...payload,
+      customerName: chat?.customerName,
+      customerPhone: chat?.customerPhone,
+    }),
     isRead: true,
   }
 }
@@ -55,6 +118,9 @@ export default function MessagesPage() {
     Record<string, boolean>
   >({})
   const [togglingConversationId, setTogglingConversationId] = useState<
+    string | null
+  >(null)
+  const [sendingConversationId, setSendingConversationId] = useState<
     string | null
   >(null)
   const [loading, setLoading] = useState(true)
@@ -83,7 +149,11 @@ export default function MessagesPage() {
           id: item.id,
           content: item.message,
           timestamp: toChatTimestamp(item.createdAt),
-          isSent: isOutboundMessage(item),
+          isSent: isOutboundMessage({
+            ...item,
+            customerName: item.conversation.customer.name,
+            customerPhone: item.conversation.customer.phoneNumber,
+          }),
           isRead: true,
         }
 
@@ -99,6 +169,7 @@ export default function MessagesPage() {
               item.conversation.customer.name?.trim() ||
               item.conversation.customer.phoneNumber ||
               "Cliente",
+            customerPhone: item.conversation.customer.phoneNumber,
             lastMessage: item.message,
             timestamp: toChatTimestamp(item.createdAt),
             unreadCount: 0,
@@ -141,21 +212,22 @@ export default function MessagesPage() {
 
   useEffect(() => {
     return subscribeToWhatsappRealtime((payload) => {
-      const nextMessage = buildRealtimeMessage(payload)
-      setMessages((prev) => {
-        const existing = prev[payload.conversationId] ?? []
-        if (existing.some((m) => m.id === payload.messageId)) {
-          return prev
-        }
-        return {
-          ...prev,
-          [payload.conversationId]: [...existing, nextMessage],
-        }
-      })
+      setChats((prevChats) => {
+        const existingChat = prevChats.find((c) => c.id === payload.conversationId)
+        const nextMessage = buildRealtimeMessage(payload, existingChat)
 
-      setChats((prev) => {
-        const existing = prev.find((c) => c.id === payload.conversationId)
-        if (!existing) {
+        setMessages((prev) => {
+          const existing = prev[payload.conversationId] ?? []
+          if (existing.some((m) => m.id === payload.messageId)) {
+            return prev
+          }
+          return {
+            ...prev,
+            [payload.conversationId]: [...existing, nextMessage],
+          }
+        })
+
+        if (!existingChat) {
           return [
             {
               id: payload.conversationId,
@@ -169,21 +241,21 @@ export default function MessagesPage() {
               isOnline: false,
               botEnabled: true,
             },
-            ...prev,
+            ...prevChats,
           ]
         }
 
         return [
           {
-            ...existing,
+            ...existingChat,
             lastMessage: payload.message,
             timestamp: toChatTimestamp(payload.createdAt),
             unreadCount:
               selectedChatId === payload.conversationId
                 ? 0
-                : existing.unreadCount + 1,
+                : existingChat.unreadCount + 1,
           },
-          ...prev.filter((c) => c.id !== payload.conversationId),
+          ...prevChats.filter((c) => c.id !== payload.conversationId),
         ]
       })
     })
@@ -225,36 +297,31 @@ export default function MessagesPage() {
   }, [])
 
   const handleSendMessage = useCallback(
-    (content: string) => {
+    async (content: string) => {
       if (!selectedChatId) return
+      const conversationId = selectedChatId
 
-      const newMessage: Message = {
-        id: `${selectedChatId}-${Date.now()}`,
-        content,
-        timestamp: new Date().toLocaleTimeString("es-AR", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        isSent: true,
-        isRead: false,
-      }
-
-      setMessages((prev) => ({
-        ...prev,
-        [selectedChatId]: [...(prev[selectedChatId] ?? []), newMessage],
-      }))
-
-      // Update last message in chat list
-      setChats((prev) =>
-        prev.map((chat) =>
-          chat.id === selectedChatId
-            ? { ...chat, lastMessage: content, timestamp: newMessage.timestamp }
-            : chat
+      setSendingConversationId(conversationId)
+      try {
+        await sendAdminWhatsappMessage(conversationId, content)
+        // No insertamos mensaje local para evitar duplicados:
+        // el render final queda sincronizado por evento realtime `admin:whatsapp`.
+      } catch (e) {
+        const msg = isAxiosError(e)
+          ? (e.response?.data as { message?: string })?.message ?? e.message
+          : "No se pudo enviar el mensaje."
+        toast.error(
+          typeof msg === "string" && msg ? msg : "No se pudo enviar el mensaje.",
         )
-      )
+      } finally {
+        setSendingConversationId((current) =>
+          current === conversationId ? null : current,
+        )
+      }
     },
-    [selectedChatId]
+    [selectedChatId],
   )
+
 
   const handleToggleBot = useCallback(
     async (enabled: boolean) => {
@@ -294,6 +361,20 @@ export default function MessagesPage() {
             ? "Bot activado para esta conversación"
             : "Modo humano activado para esta conversación",
         )
+
+        // Si vuelve de humano a bot, enviamos cierre amable para el cliente.
+        if (persisted && !prevValue) {
+          try {
+            await sendAdminWhatsappMessage(
+              conversationId,
+              BOT_REENGAGE_MESSAGE,
+            )
+          } catch {
+            toast.warning(
+              "Se activó el bot, pero no se pudo enviar el mensaje de cierre al cliente.",
+            )
+          }
+        }
       } catch {
         setBotEnabledByConversation((prev) => ({
           ...prev,
@@ -381,6 +462,7 @@ export default function MessagesPage() {
                 }
                 isTogglingBot={togglingConversationId === selectedChat.id}
                 onToggleBot={handleToggleBot}
+                isSendingMessage={sendingConversationId === selectedChat.id}
               />
             </div>
           </div>
