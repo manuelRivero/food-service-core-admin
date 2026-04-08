@@ -1,6 +1,7 @@
 "use client"
 
 import { Eye, Pencil, Trash2 } from "lucide-react"
+import Link from "next/link"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -10,14 +11,12 @@ import type { MenuItem } from "./types"
 interface MenuItemRowProps {
   item: MenuItem
   onViewDetails: (item: MenuItem) => void
-  onEdit: (item: MenuItem) => void
   onDelete: (item: MenuItem) => void
 }
 
 export function MenuItemRow({
   item,
   onViewDetails,
-  onEdit,
   onDelete,
 }: MenuItemRowProps) {
   return (
@@ -67,14 +66,15 @@ export function MenuItemRow({
             <span className="sr-only">Ver detalle</span>
           </Button>
           <Button
-            type="button"
             variant="ghost"
             size="icon"
             className="size-8"
-            onClick={() => onEdit(item)}
+            asChild
           >
-            <Pencil className="size-4" />
-            <span className="sr-only">Editar</span>
+            <Link href={`/menu-items/${item.id}/edit`}>
+              <Pencil className="size-4" />
+              <span className="sr-only">Editar</span>
+            </Link>
           </Button>
           <Button
             type="button"
