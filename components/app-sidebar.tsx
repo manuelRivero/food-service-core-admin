@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ShoppingCart, CalendarDays, LayoutDashboard, QrCode, Truck, MessageSquare, UtensilsCrossed, MapPin } from "lucide-react"
+import { ShoppingCart, CalendarDays, LayoutDashboard, QrCode, Truck, MessageSquare, UtensilsCrossed, MapPin, Settings } from "lucide-react"
 
 import {
   Sidebar,
@@ -69,6 +69,12 @@ const navItems: {
     title: "Zonas de entrega",
     href: "/delivery-zones",
     icon: MapPin,
+    allowedRoles: ["ADMIN", "OWNER"],
+  },
+  {
+    title: "Configuración",
+    href: "/settings",
+    icon: Settings,
     allowedRoles: ["ADMIN", "OWNER"],
   },
 ]
