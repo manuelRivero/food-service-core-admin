@@ -132,3 +132,29 @@
     top: calc(100% - 10px);
   }
 }
+
+/* Leaflet custom styles */
+.zone-tooltip {
+  background-color: var(--background) !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  padding: 4px 8px !important;
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1) !important;
+}
+
+.zone-tooltip::before {
+  border-top-color: var(--border) !important;
+}
+
+.leaflet-draw-toolbar a {
+  background-color: var(--background) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+
+.leaflet-draw-toolbar a:hover {
+  background-color: var(--muted) !important;
+}
