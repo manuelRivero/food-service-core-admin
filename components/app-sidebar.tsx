@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { ShoppingCart, CalendarDays, LayoutDashboard, QrCode, Truck, MessageSquare, UtensilsCrossed, MapPin, Settings } from "lucide-react"
+import { ShoppingCart, CalendarDays, LayoutDashboard, QrCode, Truck, MessageSquare, UtensilsCrossed, MapPin, Settings, Armchair } from "lucide-react"
 
 import {
   Sidebar,
@@ -46,6 +46,12 @@ const navItems: {
     title: "Reservas",
     href: "/reservations",
     icon: CalendarDays,
+  },
+  {
+    title: "Mesas",
+    href: "/tables",
+    icon: Armchair,
+    allowedRoles: ["ADMIN", "OWNER"],
   },
   {
     title: "Mensajes",
@@ -108,7 +114,15 @@ export function AppSidebar() {
             <SidebarMenu>
               {visibleItems.map((item) => (
                 <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton asChild isActive={pathname === item.href}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={
+                      item.href === "/"
+                        ? pathname === "/"
+                        : pathname === item.href ||
+                          pathname.startsWith(`${item.href}/`)
+                    }
+                  >
                     <Link href={item.href}>
                       <item.icon className="size-4" />
                       <span>{item.title}</span>

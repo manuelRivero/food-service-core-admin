@@ -1,7 +1,9 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
-import { Plus, Save, Move, Square, Circle, Users } from "lucide-react"
+import { useState, useCallback, useRef, useEffect, useMemo } from "react"
+import { isAxiosError } from "axios"
+import { toast } from "sonner"
+import { Plus, Save, Move, Square, Circle, Users, Trash2, Loader2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,73 +16,97 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useToast } from "@/hooks/use-toast"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
-
-// Types
-interface Table {
-  id: string
-  name: string
-  capacity: number
-  shape: "circle" | "rect"
-  x: number
-  y: number
-  width?: number
-  height?: number
-  status: "available" | "reserved" | "blocked"
-  environment: string
-}
-
-// Mock data
-const initialTables: Table[] = [
-  { id: "1", name: "T1", capacity: 4, shape: "circle", x: 80, y: 80, status: "available", environment: "interior" },
-  { id: "2", name: "T2", capacity: 6, shape: "rect", x: 220, y: 80, width: 120, height: 60, status: "reserved", environment: "interior" },
-  { id: "3", name: "T3", capacity: 2, shape: "circle", x: 400, y: 80, status: "available", environment: "interior" },
-  { id: "4", name: "T4", capacity: 8, shape: "rect", x: 80, y: 220, width: 140, height: 70, status: "blocked", environment: "interior" },
-  { id: "5", name: "T5", capacity: 4, shape: "circle", x: 300, y: 220, status: "available", environment: "interior" },
-  { id: "6", name: "T6", capacity: 4, shape: "circle", x: 450, y: 220, status: "reserved", environment: "interior" },
-  { id: "7", name: "T7", capacity: 6, shape: "rect", x: 80, y: 360, width: 100, height: 60, status: "available", environment: "terrace" },
-  { id: "8", name: "T8", capacity: 4, shape: "circle", x: 250, y: 360, status: "available", environment: "terrace" },
-  { id: "9", name: "T9", capacity: 10, shape: "rect", x: 400, y: 360, width: 160, height: 80, status: "reserved", environment: "terrace" },
-  { id: "10", name: "T10", capacity: 2, shape: "circle", x: 80, y: 500, status: "available", environment: "outdoor" },
-  { id: "11", name: "T11", capacity: 4, shape: "rect", x: 200, y: 500, width: 80, height: 80, status: "available", environment: "outdoor" },
-]
-
-const environments = [
-  { value: "all", label: "Todos los ambientes" },
-  { value: "interior", label: "Interior" },
-  { value: "terrace", label: "Terraza" },
-  { value: "outdoor", label: "Exterior" },
-]
+import {
+  adminTableToUi,
+  createAdminTable,
+  deleteAdminTable,
+  fetchAdminTables,
+  patchAdminTable,
+  uiTableToPatch,
+  type UiTable,
+} from "@/lib/requests/admin-tables"
 
 const statusColors = {
-  available: "bg-emerald-500",
-  reserved: "bg-red-500",
-  blocked: "bg-gray-400",
+  active: "bg-emerald-500",
+  inactive: "bg-gray-400",
 }
 
 const statusLabels = {
-  available: "Disponible",
-  reserved: "Reservada",
-  blocked: "Bloqueada",
+  active: "Activa",
+  inactive: "Inactiva",
 }
 
+function apiErrorMessage(e: unknown, fallback: string): string {
+  if (!isAxiosError(e)) return fallback
+  const d = e.response?.data as {
+    message?: string
+    error?: string
+    details?: unknown
+  }
+  const msg = d?.message ?? d?.error ?? e.message
+  if (typeof msg === "string" && msg.trim()) return msg.trim()
+  if (d?.details != null) {
+    try {
+      return `${fallback} (${JSON.stringify(d.details)})`
+    } catch {
+      return fallback
+    }
+  }
+  return fallback
+}
+
+type SaveBanner =
+  | { kind: "success"; message: string }
+  | { kind: "error"; message: string }
+
 export default function TablesPage() {
-  const { toast } = useToast()
-  const [tables, setTables] = useState<Table[]>(initialTables)
+  const [tables, setTables] = useState<UiTable[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [savingLayout, setSavingLayout] = useState(false)
+  const [savingProperties, setSavingProperties] = useState(false)
+  const [deletingTable, setDeletingTable] = useState(false)
+  const [saveBanner, setSaveBanner] = useState<SaveBanner | null>(null)
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
   const [environmentFilter, setEnvironmentFilter] = useState("all")
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const canvasRef = useRef<HTMLDivElement>(null)
 
+  const environmentOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const t of tables) {
+      map.set(t.environmentId, t.environmentName)
+    }
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }))
+  }, [tables])
+
+  const loadTables = useCallback(async () => {
+    setIsLoading(true)
+    setLoadError(null)
+    try {
+      const rows = await fetchAdminTables()
+      setTables(rows.map(adminTableToUi))
+    } catch (e) {
+      setLoadError(apiErrorMessage(e, "No se pudieron cargar las mesas."))
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadTables()
+  }, [loadTables])
+
   const filteredTables = tables.filter(
-    (table) => environmentFilter === "all" || table.environment === environmentFilter
+    (table) => environmentFilter === "all" || table.environmentId === environmentFilter,
   )
 
   const selectedTable = tables.find((t) => t.id === selectedTableId) || null
 
-  // Drag handlers
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, tableId: string) => {
       e.preventDefault()
@@ -95,7 +121,7 @@ export default function TablesPage() {
       setSelectedTableId(tableId)
       setIsDragging(true)
     },
-    [tables]
+    [tables],
   )
 
   const handleMouseMove = useCallback(
@@ -103,16 +129,20 @@ export default function TablesPage() {
       if (!isDragging || !selectedTableId || !canvasRef.current) return
 
       const canvasRect = canvasRef.current.getBoundingClientRect()
-      const newX = Math.max(0, Math.min(canvasRect.width - 100, e.clientX - canvasRect.left - dragOffset.x))
-      const newY = Math.max(0, Math.min(canvasRect.height - 80, e.clientY - canvasRect.top - dragOffset.y))
+      const newX = Math.max(
+        0,
+        Math.min(canvasRect.width - 100, e.clientX - canvasRect.left - dragOffset.x),
+      )
+      const newY = Math.max(
+        0,
+        Math.min(canvasRect.height - 80, e.clientY - canvasRect.top - dragOffset.y),
+      )
 
       setTables((prev) =>
-        prev.map((t) =>
-          t.id === selectedTableId ? { ...t, x: newX, y: newY } : t
-        )
+        prev.map((t) => (t.id === selectedTableId ? { ...t, x: newX, y: newY } : t)),
       )
     },
-    [isDragging, selectedTableId, dragOffset]
+    [isDragging, selectedTableId, dragOffset],
   )
 
   const handleMouseUp = useCallback(() => {
@@ -125,88 +155,237 @@ export default function TablesPage() {
     }
   }, [])
 
-  // Form handlers
   const updateSelectedTable = useCallback(
-    (updates: Partial<Table>) => {
+    (updates: Partial<UiTable>) => {
       if (!selectedTableId) return
       setTables((prev) =>
-        prev.map((t) => (t.id === selectedTableId ? { ...t, ...updates } : t))
+        prev.map((t) => (t.id === selectedTableId ? { ...t, ...updates } : t)),
       )
     },
-    [selectedTableId]
+    [selectedTableId],
   )
 
-  const addNewTable = useCallback(() => {
-    const newId = String(Date.now())
-    const newTable: Table = {
-      id: newId,
-      name: `T${tables.length + 1}`,
-      capacity: 4,
-      shape: "circle",
-      x: 100 + Math.random() * 200,
-      y: 100 + Math.random() * 200,
-      status: "available",
-      environment: environmentFilter === "all" ? "interior" : environmentFilter,
-    }
-    setTables((prev) => [...prev, newTable])
-    setSelectedTableId(newId)
-    toast({
-      title: "Mesa agregada",
-      description: `Se creó la mesa ${newTable.name}`,
-    })
-  }, [tables.length, environmentFilter, toast])
+  const addNewTable = useCallback(async () => {
+    const envId =
+      environmentFilter !== "all"
+        ? environmentFilter
+        : environmentOptions[0]?.id ?? null
 
-  const saveLayout = useCallback(() => {
-    toast({
-      title: "Layout guardado",
-      description: "Los cambios se guardaron correctamente",
+    if (!envId) {
+      const msg =
+        "No hay ambientes disponibles. Debe existir al menos una mesa o un ambiente en el sistema para crear otra."
+      toast.error("Sin ambiente", { description: msg })
+      setSaveBanner({ kind: "error", message: msg })
+      return
+    }
+
+    const nextNum = tables.filter((t) => t.environmentId === envId).length + 1
+    const name = `Mesa ${nextNum}`
+
+    try {
+      const created = await createAdminTable({
+        environmentId: envId,
+        name,
+        capacity: 4,
+      })
+      const ui = adminTableToUi(created)
+      setTables((prev) => [...prev, ui])
+      setSelectedTableId(ui.id)
+      const desc = `Se creó ${ui.name}`
+      toast.success("Mesa creada", { description: desc })
+      setSaveBanner({ kind: "success", message: desc })
+    } catch (e) {
+      const msg = apiErrorMessage(e, "No se pudo crear la mesa.")
+      toast.error("Error al crear mesa", { description: msg })
+      setSaveBanner({ kind: "error", message: msg })
+    }
+  }, [environmentFilter, environmentOptions, tables])
+
+  const saveLayout = useCallback(async () => {
+    setSavingLayout(true)
+    setSaveBanner(null)
+    const loadingId = toast.loading("Guardando layout…", {
+      description: `Sincronizando ${tables.length} ${tables.length === 1 ? "mesa" : "mesas"} con el servidor.`,
     })
-  }, [toast])
+    try {
+      await Promise.all(
+        tables.map((t) => patchAdminTable(t.id, uiTableToPatch(t))),
+      )
+      toast.dismiss(loadingId)
+      const desc = `Se actualizaron ${tables.length} ${tables.length === 1 ? "mesa" : "mesas"}.`
+      toast.success("Layout guardado", { description: desc })
+      setSaveBanner({ kind: "success", message: desc })
+      await loadTables()
+    } catch (e) {
+      toast.dismiss(loadingId)
+      const msg = apiErrorMessage(e, "No se pudo guardar el layout completo.")
+      toast.error("Error al guardar layout", { description: msg })
+      setSaveBanner({ kind: "error", message: msg })
+    } finally {
+      setSavingLayout(false)
+    }
+  }, [tables, loadTables])
+
+  const saveSelectedProperties = useCallback(async () => {
+    if (!selectedTable) return
+    setSavingProperties(true)
+    setSaveBanner(null)
+    const loadingId = toast.loading("Guardando mesa…", {
+      description: selectedTable.name,
+    })
+    try {
+      const updated = await patchAdminTable(selectedTable.id, uiTableToPatch(selectedTable))
+      setTables((prev) =>
+        prev.map((t) => (t.id === updated.id ? adminTableToUi(updated) : t)),
+      )
+      toast.dismiss(loadingId)
+      const desc = `${updated.name} se actualizó correctamente.`
+      toast.success("Cambios guardados", { description: desc })
+      setSaveBanner({ kind: "success", message: desc })
+    } catch (e) {
+      toast.dismiss(loadingId)
+      const msg = apiErrorMessage(e, "No se pudo actualizar la mesa.")
+      toast.error("Error al guardar la mesa", { description: msg })
+      setSaveBanner({ kind: "error", message: msg })
+    } finally {
+      setSavingProperties(false)
+    }
+  }, [selectedTable])
+
+  const deleteSelectedTable = useCallback(async () => {
+    if (!selectedTable) return
+    const id = selectedTable.id
+    const name = selectedTable.name
+    setDeletingTable(true)
+    setSaveBanner(null)
+    const loadingId = toast.loading("Eliminando mesa…", { description: name })
+    try {
+      await deleteAdminTable(id)
+      setTables((prev) => prev.filter((t) => t.id !== id))
+      setSelectedTableId(null)
+      toast.dismiss(loadingId)
+      const desc = `Se eliminó ${name}.`
+      toast.success("Mesa eliminada", { description: desc })
+      setSaveBanner({ kind: "success", message: desc })
+    } catch (e) {
+      toast.dismiss(loadingId)
+      const msg = apiErrorMessage(e, "No se pudo eliminar la mesa.")
+      toast.error("Error al eliminar", { description: msg })
+      setSaveBanner({ kind: "error", message: msg })
+    } finally {
+      setDeletingTable(false)
+    }
+  }, [selectedTable])
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-[600px] w-full" />
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Mesas</h1>
           <p className="text-muted-foreground">
-            Administra el plano de tu restaurante
+            Mové las mesas en el plano y pulsá{" "}
+            <span className="font-medium text-foreground">Guardar layout</span> para
+            guardar posiciones en el servidor. Los datos de cada mesa se confirman con{" "}
+            <span className="font-medium text-foreground">Guardar cambios</span>.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={addNewTable}>
+          <Button
+            variant="outline"
+            onClick={() => void addNewTable()}
+            disabled={savingLayout || savingProperties || deletingTable}
+          >
             <Plus className="mr-2 h-4 w-4" />
-            Agregar Mesa
+            Agregar mesa
           </Button>
-          <Button onClick={saveLayout}>
-            <Save className="mr-2 h-4 w-4" />
-            Guardar Layout
+          <Button
+            title="Envía posición, forma y rotación de todas las mesas al servidor"
+            onClick={() => void saveLayout()}
+            disabled={savingLayout || savingProperties || deletingTable || tables.length === 0}
+          >
+            {savingLayout ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="mr-2 h-4 w-4" />
+            )}
+            {savingLayout ? "Guardando…" : "Guardar layout"}
           </Button>
         </div>
       </div>
 
-      {/* Environment filter */}
+      {loadError ? (
+        <Alert variant="destructive">
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription className="flex flex-col gap-2">
+            {loadError}
+            <Button variant="outline" size="sm" className="w-fit" onClick={() => void loadTables()}>
+              Reintentar
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {saveBanner ? (
+        <Alert
+          variant={saveBanner.kind === "error" ? "destructive" : "default"}
+          className={
+            saveBanner.kind === "success"
+              ? "border-emerald-500/40 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/25 dark:text-emerald-50"
+              : undefined
+          }
+        >
+          <div className="flex w-full items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 space-y-1">
+              <AlertTitle>
+                {saveBanner.kind === "success" ? "Operación correcta" : "Algo salió mal"}
+              </AlertTitle>
+              <AlertDescription className="text-pretty">
+                {saveBanner.message}
+              </AlertDescription>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0"
+              onClick={() => setSaveBanner(null)}
+              aria-label="Cerrar aviso"
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+        </Alert>
+      ) : null}
+
       <div className="flex items-center gap-4">
         <Label htmlFor="environment-filter" className="text-sm font-medium">
           Ambiente:
         </Label>
         <Select value={environmentFilter} onValueChange={setEnvironmentFilter}>
-          <SelectTrigger id="environment-filter" className="w-[200px]">
+          <SelectTrigger id="environment-filter" className="w-[220px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {environments.map((env) => (
-              <SelectItem key={env.value} value={env.value}>
-                {env.label}
+            <SelectItem value="all">Todos los ambientes</SelectItem>
+            {environmentOptions.map((env) => (
+              <SelectItem key={env.id} value={env.id}>
+                {env.name}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
 
-      {/* Main content: Canvas + Properties Panel */}
       <div className="flex gap-6">
-        {/* Canvas */}
         <div className="flex-1">
           <Card className="overflow-hidden">
             <CardContent className="p-0">
@@ -215,7 +394,7 @@ export default function TablesPage() {
                 className={cn(
                   "relative h-[600px] cursor-crosshair select-none overflow-hidden",
                   "bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)]",
-                  "bg-[size:20px_20px]"
+                  "bg-[size:20px_20px]",
                 )}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -226,7 +405,12 @@ export default function TablesPage() {
                   <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
                     <Square className="h-12 w-12 opacity-40" />
                     <p className="text-sm">No hay mesas en este ambiente</p>
-                    <Button variant="outline" size="sm" onClick={addNewTable}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void addNewTable()}
+                      disabled={savingLayout || savingProperties || deletingTable}
+                    >
                       <Plus className="mr-2 h-4 w-4" />
                       Agregar primera mesa
                     </Button>
@@ -245,37 +429,40 @@ export default function TablesPage() {
             </CardContent>
           </Card>
 
-          {/* Legend */}
-          <div className="mt-4 flex items-center gap-6">
+          <div className="mt-4 flex flex-wrap items-center gap-6">
             <span className="text-sm font-medium text-muted-foreground">Leyenda:</span>
-            {Object.entries(statusColors).map(([status, color]) => (
-              <div key={status} className="flex items-center gap-2">
+            {Object.entries(statusColors).map(([key, color]) => (
+              <div key={key} className="flex items-center gap-2">
                 <div className={cn("h-3 w-3 rounded-full", color)} />
                 <span className="text-sm text-muted-foreground">
-                  {statusLabels[status as keyof typeof statusLabels]}
+                  {statusLabels[key as keyof typeof statusLabels]}
                 </span>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Properties Panel */}
         {selectedTable && (
           <Card className="w-[320px] shrink-0">
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Move className="h-4 w-4" />
-                Propiedades de Mesa
+                Propiedades de la mesa
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Ambiente</Label>
+                <p className="text-sm text-muted-foreground">{selectedTable.environmentName}</p>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="table-name">Nombre</Label>
                 <Input
                   id="table-name"
                   value={selectedTable.name}
                   onChange={(e) => updateSelectedTable({ name: e.target.value })}
-                  placeholder="Ej: T1"
+                  placeholder="Ej: Mesa 1"
                 />
               </div>
 
@@ -285,10 +472,10 @@ export default function TablesPage() {
                   id="table-capacity"
                   type="number"
                   min={1}
-                  max={20}
+                  max={99}
                   value={selectedTable.capacity}
                   onChange={(e) =>
-                    updateSelectedTable({ capacity: parseInt(e.target.value) || 1 })
+                    updateSelectedTable({ capacity: parseInt(e.target.value, 10) || 1 })
                   }
                 />
               </div>
@@ -332,11 +519,11 @@ export default function TablesPage() {
                     <Input
                       id="table-width"
                       type="number"
-                      min={60}
-                      max={200}
-                      value={selectedTable.width || 100}
+                      min={40}
+                      max={400}
+                      value={selectedTable.width ?? 100}
                       onChange={(e) =>
-                        updateSelectedTable({ width: parseInt(e.target.value) || 100 })
+                        updateSelectedTable({ width: parseInt(e.target.value, 10) || 100 })
                       }
                     />
                   </div>
@@ -346,10 +533,10 @@ export default function TablesPage() {
                       id="table-height"
                       type="number"
                       min={40}
-                      max={150}
-                      value={selectedTable.height || 60}
+                      max={300}
+                      value={selectedTable.height ?? 60}
                       onChange={(e) =>
-                        updateSelectedTable({ height: parseInt(e.target.value) || 60 })
+                        updateSelectedTable({ height: parseInt(e.target.value, 10) || 60 })
                       }
                     />
                   </div>
@@ -357,61 +544,58 @@ export default function TablesPage() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="table-status">Estado</Label>
+                <Label htmlFor="table-active">Estado</Label>
                 <Select
-                  value={selectedTable.status}
-                  onValueChange={(value: "available" | "reserved" | "blocked") =>
-                    updateSelectedTable({ status: value })
+                  value={selectedTable.isActive ? "active" : "inactive"}
+                  onValueChange={(value) =>
+                    updateSelectedTable({ isActive: value === "active" })
                   }
                 >
-                  <SelectTrigger id="table-status">
+                  <SelectTrigger id="table-active">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="available">
+                    <SelectItem value="active">
                       <span className="flex items-center gap-2">
                         <div className="h-2 w-2 rounded-full bg-emerald-500" />
-                        Disponible
+                        Activa
                       </span>
                     </SelectItem>
-                    <SelectItem value="reserved">
-                      <span className="flex items-center gap-2">
-                        <div className="h-2 w-2 rounded-full bg-red-500" />
-                        Reservada
-                      </span>
-                    </SelectItem>
-                    <SelectItem value="blocked">
+                    <SelectItem value="inactive">
                       <span className="flex items-center gap-2">
                         <div className="h-2 w-2 rounded-full bg-gray-400" />
-                        Bloqueada
+                        Inactiva
                       </span>
                     </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="table-environment">Ambiente</Label>
-                <Select
-                  value={selectedTable.environment}
-                  onValueChange={(value) => updateSelectedTable({ environment: value })}
-                >
-                  <SelectTrigger id="table-environment">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {environments.slice(1).map((env) => (
-                      <SelectItem key={env.value} value={env.value}>
-                        {env.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <Button
+                className="w-full"
+                onClick={() => void saveSelectedProperties()}
+                disabled={savingLayout || savingProperties || deletingTable}
+              >
+                {savingProperties ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-2 h-4 w-4" />
+                )}
+                {savingProperties ? "Guardando…" : "Guardar cambios"}
+              </Button>
 
-              <Button className="w-full" onClick={saveLayout}>
-                <Save className="mr-2 h-4 w-4" />
-                Guardar Cambios
+              <Button
+                variant="destructive"
+                className="w-full"
+                onClick={() => void deleteSelectedTable()}
+                disabled={savingLayout || savingProperties || deletingTable}
+              >
+                {deletingTable ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="mr-2 h-4 w-4" />
+                )}
+                {deletingTable ? "Eliminando…" : "Eliminar mesa"}
               </Button>
             </CardContent>
           </Card>
@@ -421,45 +605,41 @@ export default function TablesPage() {
   )
 }
 
-// Table Element Component
 function TableElement({
   table,
   isSelected,
   onMouseDown,
 }: {
-  table: Table
+  table: UiTable
   isSelected: boolean
   onMouseDown: (e: React.MouseEvent) => void
 }) {
+  const colorKey = table.isActive ? "active" : "inactive"
   const baseClasses = cn(
     "absolute flex cursor-move flex-col items-center justify-center border-2 transition-shadow",
-    statusColors[table.status],
+    statusColors[colorKey],
     isSelected
       ? "ring-2 ring-primary ring-offset-2 shadow-lg"
-      : "hover:shadow-md"
+      : "hover:shadow-md",
   )
 
   const size = table.shape === "circle" ? 64 : undefined
-  const width = table.shape === "rect" ? (table.width || 100) : size
-  const height = table.shape === "rect" ? (table.height || 60) : size
+  const width = table.shape === "rect" ? (table.width ?? 100) : size
+  const height = table.shape === "rect" ? (table.height ?? 60) : size
 
   return (
     <div
-      className={cn(
-        baseClasses,
-        table.shape === "circle" ? "rounded-full" : "rounded-lg"
-      )}
+      className={cn(baseClasses, table.shape === "circle" ? "rounded-full" : "rounded-lg")}
       style={{
         left: table.x,
         top: table.y,
         width,
         height,
+        transform: table.rotation ? `rotate(${table.rotation}deg)` : undefined,
       }}
       onMouseDown={onMouseDown}
     >
-      <span className="text-sm font-bold text-white drop-shadow-sm">
-        {table.name}
-      </span>
+      <span className="text-sm font-bold text-white drop-shadow-sm">{table.name}</span>
       <span className="flex items-center gap-0.5 text-xs text-white/90">
         <Users className="h-3 w-3" />
         {table.capacity}
