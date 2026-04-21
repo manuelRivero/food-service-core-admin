@@ -24,6 +24,15 @@ import type { AdminWhatsappRealtimePayload } from "@/lib/types/admin-realtime"
 const BOT_REENGAGE_MESSAGE =
   "Muchas gracias por escribirnos. Fue un placer ayudarte. Te dejamos nuevamente con nuestro asistente para que pueda acompañarte en tus próximas consultas. Estamos para vos siempre."
 
+function debugBotSync(message: string, payload?: Record<string, unknown>): void {
+  const timestamp = new Date().toISOString()
+  if (payload) {
+    console.debug(`[bot-sync][${timestamp}] ${message}`, payload)
+    return
+  }
+  console.debug(`[bot-sync][${timestamp}] ${message}`)
+}
+
 function toChatTimestamp(value: string): string {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return ""
@@ -156,6 +165,7 @@ export default function MessagesPage() {
   const loadInitialMessages = useCallback(async () => {
     setLoading(true)
     setError(null)
+    debugBotSync("Iniciando carga inicial de conversaciones")
     try {
       const data = await fetchAdminWhatsappMessages({
         page: 1,
@@ -242,6 +252,12 @@ export default function MessagesPage() {
           item.conversation.botEnabled ?? true
       }
 
+      debugBotSync("Cargadas conversaciones desde mensajes", {
+        totalItems: data.items.length,
+        totalConversations: nextChatsMap.size,
+        hydratedBotStates: Object.keys(nextBotEnabledByConversation).length,
+      })
+
       setChats(Array.from(nextChatsMap.values()))
       setMessages(nextMessages)
       setBotEnabledByConversation(nextBotEnabledByConversation)
@@ -253,6 +269,9 @@ export default function MessagesPage() {
 
       const conversationIds = Array.from(nextChatsMap.keys())
       if (conversationIds.length > 0) {
+        debugBotSync("Refrescando estado bot/humano desde endpoint por conversación", {
+          conversationIds,
+        })
         const botStatusResults = await Promise.allSettled(
           conversationIds.map(async (conversationId) => ({
             conversationId,
@@ -264,10 +283,17 @@ export default function MessagesPage() {
         for (const result of botStatusResults) {
           if (result.status === "fulfilled") {
             resolvedStatuses[result.value.conversationId] = result.value.enabled
+          } else {
+            debugBotSync("Fallo al refrescar estado de conversación", {
+              reason: String(result.reason),
+            })
           }
         }
 
         if (Object.keys(resolvedStatuses).length > 0) {
+          debugBotSync("Estados resueltos desde backend", {
+            resolvedStatuses,
+          })
           setBotEnabledByConversation((prev) => ({
             ...prev,
             ...resolvedStatuses,
@@ -282,6 +308,9 @@ export default function MessagesPage() {
         }
       }
     } catch (e) {
+      debugBotSync("Error en carga inicial", {
+        error: e instanceof Error ? e.message : String(e),
+      })
       if (isAxiosError(e)) {
         const msg = (e.response?.data as { message?: string })?.message ?? e.message
         setError(
@@ -354,11 +383,18 @@ export default function MessagesPage() {
 
   useEffect(() => {
     if (!selectedChatId) return
+    debugBotSync("Refrescando estado para chat seleccionado", {
+      selectedChatId,
+    })
     void (async () => {
       try {
         const enabled = await fetchAdminWhatsappConversationBotStatus(
           selectedChatId,
         )
+        debugBotSync("Estado obtenido para chat seleccionado", {
+          selectedChatId,
+          enabled,
+        })
         setBotEnabledByConversation((prev) => ({
           ...prev,
           [selectedChatId]: enabled,
@@ -368,8 +404,11 @@ export default function MessagesPage() {
             chat.id === selectedChatId ? { ...chat, botEnabled: enabled } : chat,
           ),
         )
-      } catch {
-        /* noop */
+      } catch (e) {
+        debugBotSync("Error refrescando chat seleccionado", {
+          selectedChatId,
+          error: e instanceof Error ? e.message : String(e),
+        })
       }
     })()
   }, [selectedChatId])
@@ -416,6 +455,11 @@ export default function MessagesPage() {
       if (!selectedChatId) return
       const conversationId = selectedChatId
       const prevValue = botEnabledByConversation[conversationId] ?? true
+      debugBotSync("Toggle solicitado", {
+        conversationId,
+        prevValue,
+        requestedValue: enabled,
+      })
 
       setTogglingConversationId(conversationId)
       setBotEnabledByConversation((prev) => ({
@@ -433,6 +477,11 @@ export default function MessagesPage() {
           conversationId,
           enabled,
         )
+        debugBotSync("Toggle persistido en backend", {
+          conversationId,
+          requestedValue: enabled,
+          persistedValue: persisted,
+        })
         setBotEnabledByConversation((prev) => ({
           ...prev,
           [conversationId]: persisted,
@@ -463,7 +512,13 @@ export default function MessagesPage() {
             )
           }
         }
-      } catch {
+      } catch (e) {
+        debugBotSync("Error al persistir toggle", {
+          conversationId,
+          requestedValue: enabled,
+          rollbackValue: prevValue,
+          error: e instanceof Error ? e.message : String(e),
+        })
         setBotEnabledByConversation((prev) => ({
           ...prev,
           [conversationId]: prevValue,
