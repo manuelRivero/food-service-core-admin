@@ -34,11 +34,14 @@ export function MenuItemRow({
               N/A
             </div>
           )}
-          <span className="font-medium">{item.name}</span>
+          <span className="max-w-[200px] truncate font-medium">{item.name}</span>
         </div>
       </TableCell>
       <TableCell className="text-muted-foreground">
-        {item.categoryName ?? "—"}
+        {item.menuCategoryTag ?? "—"}
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        {item.menuCategoryName ?? "—"}
       </TableCell>
       <TableCell>
         <Badge variant={item.available ? "default" : "secondary"}>
