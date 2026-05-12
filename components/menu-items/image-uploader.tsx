@@ -1,10 +1,9 @@
 "use client"
 
-import { useCallback, useState } from "react"
-import { Upload, X, ImageIcon } from "lucide-react"
-import Image from "next/image"
+import { useCallback, useEffect, useState } from "react"
+import { ImageIcon } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 
@@ -15,6 +14,31 @@ interface ImageUploaderProps {
   onChange: (value: string | null) => void
   disabled?: boolean
   className?: string
+  /** Si hay error de formato o la imagen no carga, el formulario puede bloquear el envío */
+  onBlockingValidationChange?: (hasBlockingError: boolean) => void
+}
+
+function getUrlFormatError(raw: string): string | null {
+  const s = raw.trim()
+  if (!s) return null
+  if (s.startsWith("data:image/")) return null
+  try {
+    const u = new URL(s)
+    if (u.protocol !== "http:" && u.protocol !== "https:") {
+      return "La URL debe usar http:// o https://"
+    }
+    return null
+  } catch {
+    return "Introduce una URL válida"
+  }
+}
+
+function getPreviewSrc(raw: string | null): string | null {
+  if (raw == null) return null
+  const s = raw.trim()
+  if (!s) return null
+  if (getUrlFormatError(s)) return null
+  return s
 }
 
 export function ImageUploader({
@@ -24,121 +48,133 @@ export function ImageUploader({
   onChange,
   disabled = false,
   className,
+  onBlockingValidationChange,
 }: ImageUploaderProps) {
-  const [isDragging, setIsDragging] = useState(false)
+  const text = value ?? ""
+  const formatError = getUrlFormatError(text)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const previewSrc = getPreviewSrc(value)
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (!disabled) {
-      setIsDragging(true)
-    }
-  }, [disabled])
+  useEffect(() => {
+    setLoadError(null)
+  }, [text])
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
+  const blockingError = Boolean(formatError) || Boolean(loadError)
+
+  useEffect(() => {
+    onBlockingValidationChange?.(blockingError)
+  }, [blockingError, onBlockingValidationChange])
+
+  const handleImageLoad = useCallback(() => {
+    setLoadError(null)
   }, [])
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-    
-    if (disabled) return
+  const handleImageError = useCallback(() => {
+    setLoadError(
+      "No se pudo mostrar la imagen. Comprueba que la URL sea accesible y apunte a un archivo de imagen."
+    )
+  }, [])
 
-    const file = e.dataTransfer.files?.[0]
-    if (file && file.type.startsWith("image/")) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        onChange(reader.result as string)
-      }
-      reader.readAsDataURL(file)
-    }
-  }, [disabled, onChange])
-
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file && file.type.startsWith("image/")) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        onChange(reader.result as string)
-      }
-      reader.readAsDataURL(file)
-    }
-  }, [onChange])
-
-  const handleRemove = useCallback(() => {
-    onChange(null)
-  }, [onChange])
+  /*
+   * --- Subida por archivo / arrastrar (reservado para uso futuro) ---
+   *
+   * const [isDragging, setIsDragging] = useState(false)
+   *
+   * const handleDragOver = useCallback((e: React.DragEvent) => { ... }, [disabled])
+   * const handleDragLeave = useCallback((e: React.DragEvent) => { ... }, [])
+   * const handleDrop = useCallback((e: React.DragEvent) => {
+   *   ...
+   *   const file = e.dataTransfer.files?.[0]
+   *   if (file && file.type.startsWith("image/")) {
+   *     const reader = new FileReader()
+   *     reader.onloadend = () => { onChange(reader.result as string) }
+   *     reader.readAsDataURL(file)
+   *   }
+   * }, [disabled, onChange])
+   *
+   * const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+   *   const file = e.target.files?.[0]
+   *   if (file && file.type.startsWith("image/")) {
+   *     const reader = new FileReader()
+   *     reader.onloadend = () => { onChange(reader.result as string) }
+   *     reader.readAsDataURL(file)
+   *   }
+   * }, [onChange])
+   *
+   * <label htmlFor={id} onDragOver={...} onDragLeave={...} onDrop={...}>
+   *   ...
+   *   <input id={id} type="file" accept="image/*" onChange={handleFileChange} className="sr-only" />
+   * </label>
+   */
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      <Label>{label}</Label>
-      
-      {value ? (
-        <div className="relative w-full max-w-xs">
-          <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-muted">
-            <Image
-              src={value}
-              alt="Preview"
-              fill
-              className="object-cover"
-              unoptimized={value.startsWith("data:")}
-            />
-          </div>
-          <Button
-            type="button"
-            variant="destructive"
-            size="icon"
-            className="absolute -right-2 -top-2 size-7"
-            onClick={handleRemove}
-            disabled={disabled}
-          >
-            <X className="size-4" />
-            <span className="sr-only">Eliminar imagen</span>
-          </Button>
-        </div>
-      ) : (
-        <label
-          htmlFor={id}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          className={cn(
-            "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 transition-colors",
-            isDragging
-              ? "border-primary bg-primary/5"
-              : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50",
-            disabled && "cursor-not-allowed opacity-50"
-          )}
-        >
-          <div className="flex size-12 items-center justify-center rounded-full bg-muted">
-            {isDragging ? (
-              <Upload className="size-6 text-primary" />
-            ) : (
-              <ImageIcon className="size-6 text-muted-foreground" />
-            )}
-          </div>
-          <div className="text-center">
-            <p className="text-sm font-medium">
-              {isDragging ? "Suelta la imagen aquí" : "Arrastra una imagen aquí"}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              o haz clic para seleccionar
-            </p>
-          </div>
-          <input
-            id={id}
-            type="file"
-            accept="image/*"
-            onChange={handleFileChange}
-            disabled={disabled}
-            className="sr-only"
-          />
-        </label>
+      <Label htmlFor={id}>{label}</Label>
+
+      <Input
+        id={id}
+        type="url"
+        inputMode="url"
+        autoComplete="url"
+        placeholder="https://ejemplo.com/imagen.jpg"
+        value={text}
+        onChange={(e) => {
+          const v = e.target.value
+          onChange(v === "" ? null : v)
+        }}
+        disabled={disabled}
+        aria-invalid={Boolean(formatError || loadError)}
+        className={cn((formatError || loadError) && "border-destructive")}
+      />
+
+      {(formatError || loadError) && (
+        <p className="text-sm text-destructive" role="alert">
+          {formatError ?? loadError}
+        </p>
       )}
+
+      <div
+        className={cn(
+          "relative w-full max-w-xs overflow-hidden rounded-lg border bg-muted",
+          previewSrc ? "aspect-video" : "min-h-40"
+        )}
+      >
+        {previewSrc ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element -- URL externa arbitraria; onLoad/onError nativos */}
+            <img
+              src={previewSrc}
+              alt="Vista previa del producto"
+              className="absolute inset-0 size-full object-cover"
+              onLoad={handleImageLoad}
+              onError={handleImageError}
+            />
+            {/* Quitar imagen: antes botón X; ahora se borra vaciando el input de URL
+            {!disabled && text.trim() !== "" && (
+              <Button
+                type="button"
+                variant="destructive"
+                size="icon"
+                className="absolute -right-2 -top-2 size-7"
+                onClick={handleRemove}
+              >
+                <X className="size-4" />
+                <span className="sr-only">Quitar imagen</span>
+              </Button>
+            )}
+            */}
+          </>
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-8 text-center text-muted-foreground">
+            <ImageIcon className="size-10 opacity-60" />
+            <p className="text-sm">
+              {text.trim() === ""
+                ? "La vista previa aparecerá cuando indiques una URL válida"
+                : "Vista previa no disponible hasta que la URL sea válida"}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

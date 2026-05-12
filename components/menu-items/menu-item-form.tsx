@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import { toast } from "sonner"
@@ -72,6 +72,16 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [categories, setCategories] = useState<ProductCategoryOption[]>([])
+  const [imageUrlBlocked, setImageUrlBlocked] = useState(false)
+
+  const handleImageBlockingChange = useCallback((blocked: boolean) => {
+    setImageUrlBlocked(blocked)
+    if (!blocked) {
+      setErrors((prev) =>
+        prev.imageUrl ? { ...prev, imageUrl: undefined } : prev
+      )
+    }
+  }, [])
 
   useEffect(() => {
     const load = async () => {
@@ -151,6 +161,10 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
 
     if (!formData.categoryId) {
       newErrors.categoryId = "Selecciona una categoría"
+    }
+
+    if (imageUrlBlocked) {
+      newErrors.imageUrl = "Revisa la URL de la imagen"
     }
 
     setErrors(newErrors)
@@ -370,11 +384,15 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
           <FormSection title="Imagen">
             <ImageUploader
               id="image"
-              label="Imagen del producto"
+              label="Enlace a la imagen"
               value={formData.imageUrl}
               onChange={(value) => updateField("imageUrl", value)}
               disabled={isSaving}
+              onBlockingValidationChange={handleImageBlockingChange}
             />
+            {errors.imageUrl && (
+              <p className="text-sm text-destructive">{errors.imageUrl}</p>
+            )}
           </FormSection>
         </div>
       </div>

@@ -3,6 +3,8 @@ import type { MenuItem } from "@/components/menu-items/types"
 
 export const ADMIN_MENU_ITEMS_PATH = "/admin/menu-items"
 export const ADMIN_MENU_CATEGORIES_OPTIONS_PATH = "/admin/menu-categories/options"
+export const ADMIN_MENU_CATEGORY_TAGS_OPTIONS_PATH =
+  "/admin/menu-category-tags/options"
 
 export interface FetchAdminMenuItemsParams {
   page?: number
@@ -102,6 +104,21 @@ export interface MenuCategoryOption {
   id: string
   name: string
   tag?: string | null
+}
+
+interface MenuCategoryTagOptionRaw {
+  id?: string
+  name?: string
+}
+
+interface AdminMenuCategoryTagsOptionsResponseRaw {
+  items?: MenuCategoryTagOptionRaw[]
+}
+
+/** id = MenuCategoryTag (p. ej. STARTER), name = etiqueta en español */
+export interface MenuCategoryTagOption {
+  id: string
+  name: string
 }
 
 function normalizeCategoryName(value: string | null | undefined): string {
@@ -223,6 +240,22 @@ export async function fetchAdminMenuCategoriesOptions(): Promise<
                 : typeof it.tag === "string"
                   ? it.tag
                   : inferCategoryTagFromName(it.name),
+        }))
+        .filter((it) => it.id && it.name)
+    : []
+}
+
+export async function fetchAdminMenuCategoryTagsOptions(): Promise<
+  MenuCategoryTagOption[]
+> {
+  const { data } = await api.get<AdminMenuCategoryTagsOptionsResponseRaw>(
+    ADMIN_MENU_CATEGORY_TAGS_OPTIONS_PATH,
+  )
+  return Array.isArray(data.items)
+    ? data.items
+        .map((it) => ({
+          id: typeof it.id === "string" ? it.id.trim().toUpperCase() : "",
+          name: typeof it.name === "string" ? it.name : "",
         }))
         .filter((it) => it.id && it.name)
     : []

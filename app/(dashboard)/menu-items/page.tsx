@@ -15,11 +15,20 @@ import type { MenuItem } from "@/components/menu-items/types"
 import {
   deleteAdminMenuItem,
   fetchAdminMenuCategoriesOptions,
+  fetchAdminMenuCategoryTagsOptions,
   fetchAdminMenuItems,
   type MenuCategoryOption,
+  type MenuCategoryTagOption,
 } from "@/lib/requests/menu-items"
 
 const ALL_TAB_KEY = "todos"
+
+/** Filtro por tipo de plato (API de categorías de menú). */
+const FILTER_MODE_CATEGORIES = "categories"
+/** Filtro por sección de carta (MenuCategoryTag del producto). */
+const FILTER_MODE_SECTIONS = "sections"
+
+type FilterMode = typeof FILTER_MODE_CATEGORIES | typeof FILTER_MODE_SECTIONS
 
 function normalizeCategoryLabel(value: string | null | undefined): string {
   return (value ?? "")
@@ -36,23 +45,30 @@ export default function MenuItemsPage() {
   const [total, setTotal] = useState(0)
   const [searchQuery, setSearchQuery] = useState("")
   const [categoryOptions, setCategoryOptions] = useState<MenuCategoryOption[]>([])
+  const [sectionTagOptions, setSectionTagOptions] = useState<
+    MenuCategoryTagOption[]
+  >([])
+  const [filterMode, setFilterMode] = useState<FilterMode>(FILTER_MODE_CATEGORIES)
   const [activeCategoryTab, setActiveCategoryTab] = useState<string>(ALL_TAB_KEY)
+  const [activeSectionTab, setActiveSectionTab] = useState<string>(ALL_TAB_KEY)
 
   const loadItems = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [itemsData, categoriesData] = await Promise.all([
+      const [itemsData, categoriesData, tagOptionsData] = await Promise.all([
         fetchAdminMenuItems({
           page: 1,
           pageSize: 100,
           includeUnavailable: true,
         }),
         fetchAdminMenuCategoriesOptions(),
+        fetchAdminMenuCategoryTagsOptions(),
       ])
       setItems(itemsData.items)
       setTotal(itemsData.total)
       setCategoryOptions(categoriesData)
+      setSectionTagOptions(tagOptionsData)
     } catch (e) {
       const msg = isAxiosError(e)
         ? (e.response?.data as { message?: string })?.message ?? e.message
@@ -71,6 +87,11 @@ export default function MenuItemsPage() {
     void loadItems()
   }, [loadItems])
 
+  useEffect(() => {
+    setActiveCategoryTab(ALL_TAB_KEY)
+    setActiveSectionTab(ALL_TAB_KEY)
+  }, [filterMode])
+
   const handleDeleteItem = useCallback(async (item: MenuItem) => {
     await deleteAdminMenuItem(item.id)
     setItems((prev) => prev.filter((x) => x.id !== item.id))
@@ -80,31 +101,36 @@ export default function MenuItemsPage() {
 
   const filteredItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
-    const selectedCategory = categoryOptions.find(
-      (cat) => cat.id === activeCategoryTab,
-    )
-    const selectedCategoryName = normalizeCategoryLabel(selectedCategory?.name)
 
     return items.filter((item) => {
       const byName = !q || item.name.toLowerCase().includes(q)
       if (!byName) return false
-      if (activeCategoryTab === ALL_TAB_KEY) return true
 
-      const itemCategoryId = item.menuCategoryId ?? item.categoryId
-      if (itemCategoryId && itemCategoryId === activeCategoryTab) {
-        return true
+      if (filterMode === FILTER_MODE_CATEGORIES) {
+        if (activeCategoryTab === ALL_TAB_KEY) return true
+        const selected = categoryOptions.find((c) => c.id === activeCategoryTab)
+        const selectedName = normalizeCategoryLabel(selected?.name)
+        if (item.menuCategoryId && item.menuCategoryId === activeCategoryTab) {
+          return true
+        }
+        const itemName = normalizeCategoryLabel(item.menuCategoryName)
+        return Boolean(
+          selectedName && itemName && itemName === selectedName,
+        )
       }
 
-      const itemCategoryName = normalizeCategoryLabel(
-        item.menuCategoryName ?? item.categoryName,
-      )
-      return Boolean(
-        selectedCategoryName &&
-          itemCategoryName &&
-          itemCategoryName === selectedCategoryName,
-      )
+      if (activeSectionTab === ALL_TAB_KEY) return true
+      const itemTag = item.menuCategoryTag?.trim().toUpperCase() ?? ""
+      return itemTag === activeSectionTab.trim().toUpperCase()
     })
-  }, [items, searchQuery, activeCategoryTab, categoryOptions])
+  }, [
+    items,
+    searchQuery,
+    filterMode,
+    activeCategoryTab,
+    activeSectionTab,
+    categoryOptions,
+  ])
 
   return (
     <div className="flex flex-col gap-6">
@@ -141,18 +167,46 @@ export default function MenuItemsPage() {
           className="max-w-sm"
         />
         <Tabs
-          value={activeCategoryTab}
-          onValueChange={(value) =>
-            setActiveCategoryTab(value)
-          }
+          value={filterMode}
+          onValueChange={(value) => setFilterMode(value as FilterMode)}
         >
-          <TabsList>
+          <TabsList className="flex flex-wrap h-fit">
+            <TabsTrigger value={FILTER_MODE_CATEGORIES}>
+              Categorías de platillos
+            </TabsTrigger>
+            <TabsTrigger value={FILTER_MODE_SECTIONS}>
+              Secciones de la carta
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        <Tabs
+          value={
+            filterMode === FILTER_MODE_CATEGORIES
+              ? activeCategoryTab
+              : activeSectionTab
+          }
+          onValueChange={(value) => {
+            if (filterMode === FILTER_MODE_CATEGORIES) {
+              setActiveCategoryTab(value)
+            } else {
+              setActiveSectionTab(value)
+            }
+          }}
+        >
+          <TabsList className="flex flex-wrap h-fit">
             <TabsTrigger value={ALL_TAB_KEY}>Todos</TabsTrigger>
-            {categoryOptions.map((category) => (
-              <TabsTrigger key={category.id} value={category.id}>
-                {category.name}
-              </TabsTrigger>
-            ))}
+            {filterMode === FILTER_MODE_CATEGORIES
+              ? categoryOptions.map((category) => (
+                  <TabsTrigger key={category.id} value={category.id}>
+                    {category.name}
+                  </TabsTrigger>
+                ))
+              : sectionTagOptions.map((section) => (
+                  <TabsTrigger key={section.id} value={section.id}>
+                    {section.name}
+                  </TabsTrigger>
+                ))}
           </TabsList>
         </Tabs>
       </div>
