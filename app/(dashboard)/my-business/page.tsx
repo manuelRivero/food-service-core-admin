@@ -50,14 +50,14 @@ type FormState = {
 
 function profileToForm(p: AdminBusinessProfile): FormState {
   return {
-    name: p.name,
-    slug: p.slug,
+    name: p.name ?? "",
+    slug: normText(p.slug),
     description: p.description ?? "",
     street_address: p.street_address ?? "",
     address_notes: p.address_notes ?? "",
     latitudeStr: p.latitude != null ? String(p.latitude) : "",
     longitudeStr: p.longitude != null ? String(p.longitude) : "",
-    timezone: p.timezone,
+    timezone: p.timezone ?? "",
   }
 }
 
@@ -67,12 +67,12 @@ function buildPatch(
 ): { patch: AdminBusinessProfilePatch; clientError?: string } {
   const patch: AdminBusinessProfilePatch = {}
 
-  if (form.name.trim() !== initial.name.trim()) {
-    patch.name = form.name.trim()
+  if (normText(form.name) !== normText(initial.name)) {
+    patch.name = normText(form.name)
   }
 
-  if (form.slug.trim() !== initial.slug.trim()) {
-    patch.slug = form.slug.trim()
+  if (normText(form.slug) !== normText(initial.slug)) {
+    patch.slug = normText(form.slug)
   }
 
   const descForm = form.description.trim()
@@ -105,8 +105,8 @@ function buildPatch(
     patch.longitude = lng
   }
 
-  if (form.timezone.trim() !== initial.timezone.trim()) {
-    patch.timezone = form.timezone.trim()
+  if (normText(form.timezone) !== normText(initial.timezone)) {
+    patch.timezone = normText(form.timezone)
   }
 
   return { patch }

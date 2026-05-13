@@ -12,7 +12,7 @@ export interface AdminBusinessProfile {
   latitude: number | null
   longitude: number | null
   timezone: string
-  slug: string
+  slug: string | null
   currency_code: string
   is_active: boolean
 }
