@@ -20,6 +20,8 @@ export interface AdminBusinessConfig {
   reservation_allow_same_day: boolean
   orders_enabled: boolean
   checkout_enabled: boolean
+  /** Si el backend lo expone: retiro en local; condiciona validación de dirección. */
+  takeaway_enabled?: boolean
 }
 
 export type AdminBusinessConfigPatch = Partial<AdminBusinessConfig>

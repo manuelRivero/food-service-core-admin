@@ -96,6 +96,9 @@ export function canAccessPath(role: UserRole, pathname: string): boolean {
   if (pathname === "/hours" || pathname.startsWith("/hours/")) {
     return role === "ADMIN" || role === "OWNER"
   }
+  if (pathname === "/my-business" || pathname.startsWith("/my-business/")) {
+    return role === "OWNER"
+  }
 
   return true
 }
