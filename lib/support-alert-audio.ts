@@ -42,7 +42,7 @@ function playChimeOnce(): void {
   o.frequency.setValueAtTime(784, t0 + 0.22)
 
   g.gain.setValueAtTime(0.0001, t0)
-  g.gain.exponentialRampToValueAtTime(0.1, t0 + 0.03)
+  g.gain.exponentialRampToValueAtTime(0.3, t0 + 0.03)
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42)
 
   o.connect(g)
