@@ -493,7 +493,7 @@ function MessagesPageContent() {
       return [
         {
           id,
-          customerName: metaSnapshot?.customerName ?? "Cliente",
+          customerName: metaSnapshot?.customerName ?? "Usuario no agendado",
           customerPhone: metaSnapshot?.customerPhone,
           lastMessage: metaSnapshot
             ? "Cliente solicita atención humana"

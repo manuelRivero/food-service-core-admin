@@ -362,16 +362,15 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
           }
         })
 
-        const displayName =
-          p.customerName?.trim() ||
-          p.customerPhone ||
-          "Cliente"
-        const subtitle = `${displayName} · ${p.customerPhone}`
+        const trimmedName = (p.customerName ?? "").trim()
+        const contactLabel =
+          trimmedName.length > 0 ? trimmedName : "Usuario no agendado"
+        const subtitle = `${contactLabel} · ${p.customerPhone}`
 
         setWhatsappSupportByConversation((prev) => ({
           ...prev,
           [p.conversationId]: {
-            customerName: displayName,
+            customerName: contactLabel,
             customerPhone: p.customerPhone,
             at: p.at,
           },
