@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Bot, Smile } from "lucide-react"
+import { AlertCircle, Bot, Smile } from "lucide-react"
 
 export interface ChatItemData {
   id: string
@@ -15,6 +15,8 @@ export interface ChatItemData {
   unreadCount: number
   isOnline?: boolean
   botEnabled?: boolean
+  /** Solicitud de soporte humana pendiente (socket `whatsapp.support_requested`). */
+  needsSupport?: boolean
 }
 
 interface ChatItemProps {
@@ -49,6 +51,15 @@ export function ChatItem({ chat, isSelected, onClick }: ChatItemProps) {
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <span className="truncate font-medium">{chat.customerName}</span>
+            {chat.needsSupport ? (
+              <span
+                className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700"
+                title="Cliente necesita atención humana"
+              >
+                <AlertCircle className="size-3 shrink-0 animate-pulse" aria-hidden />
+                Soporte
+              </span>
+            ) : null}
             {chat.botEnabled ? (
               <Bot
                 className={cn("size-7 shrink-0 text-green-600")}

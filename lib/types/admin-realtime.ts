@@ -99,7 +99,8 @@ export function isAdminReservationRealtimePayload(
   return false
 }
 
-export interface AdminWhatsappRealtimePayload {
+/** Evento `admin:whatsapp` — mensaje nuevo en una conversación. */
+export interface AdminWhatsappMessageCreatedPayload {
   type: "whatsapp.message_created"
   businessId: string
   conversationId: string
@@ -110,9 +111,25 @@ export interface AdminWhatsappRealtimePayload {
   createdAt: string
 }
 
-export function isAdminWhatsappRealtimePayload(
+/** Evento `admin:whatsapp` — el cliente no logra su objetivo y pide intervención humana. */
+export interface AdminWhatsappSupportRequestedPayload {
+  type: "whatsapp.support_requested"
+  businessId: string
+  conversationId: string
+  customerId: string
+  customerPhone: string
+  /** Opcional en API; si falta se muestra el teléfono. */
+  customerName?: string
+  at: string
+}
+
+export type AdminWhatsappRealtimePayload =
+  | AdminWhatsappMessageCreatedPayload
+  | AdminWhatsappSupportRequestedPayload
+
+export function isAdminWhatsappMessageCreatedPayload(
   value: unknown,
-): value is AdminWhatsappRealtimePayload {
+): value is AdminWhatsappMessageCreatedPayload {
   if (!value || typeof value !== "object") return false
   const o = value as Record<string, unknown>
   return (
@@ -124,5 +141,38 @@ export function isAdminWhatsappRealtimePayload(
     typeof o.message === "string" &&
     typeof o.isAiGenerated === "boolean" &&
     typeof o.createdAt === "string"
+  )
+}
+
+export function isAdminWhatsappSupportRequestedPayload(
+  value: unknown,
+): value is AdminWhatsappSupportRequestedPayload {
+  if (!value || typeof value !== "object") return false
+  const o = value as Record<string, unknown>
+  if (o.type !== "whatsapp.support_requested") return false
+  if (
+    typeof o.businessId !== "string" ||
+    typeof o.conversationId !== "string" ||
+    typeof o.customerId !== "string" ||
+    typeof o.customerPhone !== "string" ||
+    typeof o.at !== "string"
+  ) {
+    return false
+  }
+  if (
+    o.customerName !== undefined &&
+    typeof o.customerName !== "string"
+  ) {
+    return false
+  }
+  return true
+}
+
+export function isAdminWhatsappRealtimePayload(
+  value: unknown,
+): value is AdminWhatsappRealtimePayload {
+  return (
+    isAdminWhatsappMessageCreatedPayload(value) ||
+    isAdminWhatsappSupportRequestedPayload(value)
   )
 }

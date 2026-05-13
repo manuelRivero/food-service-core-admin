@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/sidebar"
 import { getUserRoleFromCookie } from "@/lib/auth"
 import { canAccessPath, type UserRole } from "@/lib/access-control"
+import { useAdminSocket } from "@/contexts/admin-socket-context"
 
 const navItems: {
   title: string
@@ -94,6 +95,7 @@ const navItems: {
 export function AppSidebar() {
   const pathname = usePathname()
   const [role, setRole] = useState<UserRole>("UNKNOWN")
+  const { whatsappSupportPendingCount } = useAdminSocket()
 
   useEffect(() => {
     setRole(getUserRoleFromCookie())
@@ -129,9 +131,19 @@ export function AppSidebar() {
                           pathname.startsWith(`${item.href}/`)
                     }
                   >
-                    <Link href={item.href}>
-                      <item.icon className="size-4" />
-                      <span>{item.title}</span>
+                    <Link
+                      href={item.href}
+                      className="flex min-w-0 w-full items-center gap-2"
+                    >
+                      <item.icon className="size-4 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                      {item.href === "/messages" && whatsappSupportPendingCount > 0 ? (
+                        <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-orange-600 px-1.5 text-[10px] font-semibold text-white">
+                          {whatsappSupportPendingCount > 9
+                            ? "9+"
+                            : whatsappSupportPendingCount}
+                        </span>
+                      ) : null}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

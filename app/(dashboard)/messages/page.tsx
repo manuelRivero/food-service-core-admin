@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef, Suspense } from "react"
 import { isAxiosError } from "axios"
+import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 
 import { useAdminSocket } from "@/contexts/admin-socket-context"
@@ -19,7 +20,7 @@ import {
   patchAdminWhatsappConversationBotStatus,
   sendAdminWhatsappMessage,
 } from "@/lib/requests/messages"
-import type { AdminWhatsappRealtimePayload } from "@/lib/types/admin-realtime"
+import type { AdminWhatsappMessageCreatedPayload } from "@/lib/types/admin-realtime"
 
 const BOT_REENGAGE_MESSAGE =
   "Muchas gracias por escribirnos. Fue un placer ayudarte. Te dejamos nuevamente con nuestro asistente para que pueda acompañarte en tus próximas consultas. Estamos para vos siempre."
@@ -104,7 +105,7 @@ function isOutboundMessage(payload: {
 }
 
 function buildRealtimeMessage(
-  payload: AdminWhatsappRealtimePayload,
+  payload: AdminWhatsappMessageCreatedPayload,
   chat?: ChatItemData,
 ): Message {
   if (payload.message.trim() === BOT_REENGAGE_MESSAGE) {
@@ -143,7 +144,27 @@ function resolveSenderKind(
 }
 
 export default function MessagesPage() {
-  const { subscribeToWhatsappRealtime } = useAdminSocket()
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[14rem] items-center justify-center rounded-lg border bg-background p-8 text-sm text-muted-foreground">
+          Cargando conversaciones...
+        </div>
+      }
+    >
+      <MessagesPageContent />
+    </Suspense>
+  )
+}
+
+function MessagesPageContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const {
+    subscribeToWhatsappRealtime,
+    whatsappSupportByConversation,
+    acknowledgeWhatsappSupportConversation,
+  } = useAdminSocket()
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [chats, setChats] = useState<ChatItemData[]>([])
@@ -159,9 +180,19 @@ export default function MessagesPage() {
   >(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const processedUrlConversationRef = useRef<string | null>(null)
 
   const selectedChat = chats.find((chat) => chat.id === selectedChatId)
   const currentMessages = selectedChatId ? messages[selectedChatId] ?? [] : []
+
+  const chatsForList = useMemo(
+    () =>
+      chats.map((c) => ({
+        ...c,
+        needsSupport: Boolean(whatsappSupportByConversation[c.id]),
+      })),
+    [chats, whatsappSupportByConversation],
+  )
   const loadInitialMessages = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -332,6 +363,8 @@ export default function MessagesPage() {
 
   useEffect(() => {
     return subscribeToWhatsappRealtime((payload) => {
+      if (payload.type !== "whatsapp.message_created") return
+
       setChats((prevChats) => {
         const existingChat = prevChats.find((c) => c.id === payload.conversationId)
         const nextMessage = buildRealtimeMessage(payload, existingChat)
@@ -382,6 +415,67 @@ export default function MessagesPage() {
   }, [subscribeToWhatsappRealtime, selectedChatId])
 
   useEffect(() => {
+    const entries = Object.entries(whatsappSupportByConversation)
+    if (entries.length === 0) return
+    setChats((prev) => {
+      const ids = new Set(prev.map((c) => c.id))
+      const additions = entries.filter(([convId]) => !ids.has(convId))
+      if (additions.length === 0) return prev
+      const rows: ChatItemData[] = additions.map(([convId, meta]) => ({
+        id: convId,
+        customerName: meta.customerName,
+        customerPhone: meta.customerPhone,
+        lastMessage: "Cliente solicita atención humana",
+        timestamp: toChatTimestamp(meta.at),
+        unreadCount: 0,
+        isOnline: false,
+        botEnabled: true,
+      }))
+      return [...rows, ...prev]
+    })
+  }, [whatsappSupportByConversation])
+
+  useEffect(() => {
+    const id = searchParams.get("conversation")
+    if (!id) {
+      processedUrlConversationRef.current = null
+      return
+    }
+    if (loading) return
+    if (processedUrlConversationRef.current === id) return
+    processedUrlConversationRef.current = id
+
+    const metaSnapshot = whatsappSupportByConversation[id]
+    setSelectedChatId(id)
+    setChats((prev) => {
+      if (prev.some((c) => c.id === id)) return prev
+      return [
+        {
+          id,
+          customerName: metaSnapshot?.customerName ?? "Cliente",
+          customerPhone: metaSnapshot?.customerPhone,
+          lastMessage: metaSnapshot
+            ? "Cliente solicita atención humana"
+            : "",
+          timestamp: metaSnapshot ? toChatTimestamp(metaSnapshot.at) : "",
+          unreadCount: 0,
+          isOnline: false,
+          botEnabled: true,
+        },
+        ...prev,
+      ]
+    })
+    acknowledgeWhatsappSupportConversation(id)
+    router.replace("/messages", { scroll: false })
+  }, [
+    loading,
+    searchParams,
+    router,
+    acknowledgeWhatsappSupportConversation,
+    whatsappSupportByConversation,
+  ])
+
+  useEffect(() => {
     if (!selectedChatId) return
     debugBotSync("Refrescando estado para chat seleccionado", {
       selectedChatId,
@@ -413,15 +507,18 @@ export default function MessagesPage() {
     })()
   }, [selectedChatId])
 
-  const handleSelectChat = useCallback((chatId: string) => {
-    setSelectedChatId(chatId)
-    // Mark messages as read when selecting a chat
-    setChats((prev) =>
-      prev.map((chat) =>
-        chat.id === chatId ? { ...chat, unreadCount: 0 } : chat
+  const handleSelectChat = useCallback(
+    (chatId: string) => {
+      acknowledgeWhatsappSupportConversation(chatId)
+      setSelectedChatId(chatId)
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.id === chatId ? { ...chat, unreadCount: 0 } : chat,
+        ),
       )
-    )
-  }, [])
+    },
+    [acknowledgeWhatsappSupportConversation],
+  )
 
   const handleSendMessage = useCallback(
     async (content: string) => {
@@ -560,7 +657,7 @@ export default function MessagesPage() {
       {/* Chat List - Hidden on mobile when a chat is selected */}
       <div className={`w-full flex-shrink-0 md:w-80 ${selectedChatId ? "hidden md:block" : ""}`}>
         <ChatList
-          chats={chats}
+          chats={chatsForList}
           selectedChatId={selectedChatId}
           onSelectChat={handleSelectChat}
           searchQuery={searchQuery}

@@ -9,22 +9,31 @@ import {
   useRef,
   useState,
 } from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { io, type Socket } from "socket.io-client"
+import { toast } from "sonner"
 
 import { getAuthCookie } from "@/lib/auth"
 import { getSocketBaseUrl } from "@/lib/socket-base-url"
 import { getOrderStatusLabelEs } from "@/lib/constants/orderWorkflow"
 import {
+  startSupportAlertLoop,
+  stopSupportAlertLoop,
+} from "@/lib/support-alert-audio"
+import {
   isAdminOrderRealtimePayload,
   isAdminReservationRealtimePayload,
-  isAdminWhatsappRealtimePayload,
+  isAdminWhatsappMessageCreatedPayload,
+  isAdminWhatsappSupportRequestedPayload,
   type AdminOrderRealtimePayload,
   type AdminReservationRealtimePayload,
   type AdminWhatsappRealtimePayload,
 } from "@/lib/types/admin-realtime"
 
-export type AdminNotificationKind = "order" | "reservation"
+export type AdminNotificationKind =
+  | "order"
+  | "reservation"
+  | "whatsapp_support"
 
 export interface AdminNotification {
   id: string
@@ -36,11 +45,21 @@ export interface AdminNotification {
   read: boolean
 }
 
+export type WhatsappSupportConversationMeta = {
+  customerName: string
+  customerPhone: string
+  at: string
+}
+
 type AdminSocketContextValue = {
   isConnected: boolean
   notifications: AdminNotification[]
   badgeCount: number
   removeNotification: (id: string) => void
+  /** Conversaciones con solicitud de soporte pendiente (badge listado / sidebar). */
+  whatsappSupportByConversation: Record<string, WhatsappSupportConversationMeta>
+  whatsappSupportPendingCount: number
+  acknowledgeWhatsappSupportConversation: (conversationId: string) => void
   /** Evento `admin:order` con payload discriminado (created / status_changed). */
   subscribeToOrderRealtime: (
     cb: (payload: AdminOrderRealtimePayload) => void,
@@ -49,10 +68,14 @@ type AdminSocketContextValue = {
   subscribeToReservationRealtime: (
     cb: (payload: AdminReservationRealtimePayload) => void,
   ) => () => void
-  /** Evento `admin:whatsapp` con payload `whatsapp.message_created`. */
+  /** Evento `admin:whatsapp` (`whatsapp.message_created` | `whatsapp.support_requested`). */
   subscribeToWhatsappRealtime: (
     cb: (payload: AdminWhatsappRealtimePayload) => void,
   ) => () => void
+}
+
+function isMessagesPath(path: string): boolean {
+  return path === "/messages" || path.startsWith("/messages/")
 }
 
 const AdminSocketContext = createContext<AdminSocketContextValue | null>(null)
@@ -100,12 +123,18 @@ function notificationTitleForReservation(
 }
 
 export function AdminSocketProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter()
+  const routerRef = useRef(router)
+  routerRef.current = router
+
   const pathname = usePathname()
   const pathnameRef = useRef(pathname)
   pathnameRef.current = pathname
 
   const [isConnected, setIsConnected] = useState(false)
   const [notifications, setNotifications] = useState<AdminNotification[]>([])
+  const [whatsappSupportByConversation, setWhatsappSupportByConversation] =
+    useState<Record<string, WhatsappSupportConversationMeta>>({})
 
   const orderRealtimeListenersRef = useRef(
     new Set<(payload: AdminOrderRealtimePayload) => void>(),
@@ -151,6 +180,39 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
   const removeNotification = useCallback((id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id))
   }, [])
+
+  const acknowledgeWhatsappSupportConversation = useCallback(
+    (conversationId: string) => {
+      setWhatsappSupportByConversation((prev) => {
+        if (!Object.prototype.hasOwnProperty.call(prev, conversationId)) {
+          return prev
+        }
+        const { [conversationId]: _removed, ...rest } = prev
+        return rest
+      })
+      setNotifications((prev) =>
+        prev.filter(
+          (n) =>
+            !(
+              n.kind === "whatsapp_support" &&
+              n.resourceId === conversationId
+            ),
+        ),
+      )
+    },
+    [],
+  )
+
+  const whatsappSupportPendingCount = useMemo(
+    () => Object.keys(whatsappSupportByConversation).length,
+    [whatsappSupportByConversation],
+  )
+
+  useEffect(() => {
+    if (isMessagesPath(pathname)) {
+      stopSupportAlertLoop()
+    }
+  }, [pathname])
 
   useEffect(() => {
     if (pathname === "/orders") {
@@ -265,20 +327,97 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
     })
 
     socket.on("admin:whatsapp", (raw: unknown) => {
-      if (!isAdminWhatsappRealtimePayload(raw)) {
+      if (isAdminWhatsappMessageCreatedPayload(raw)) {
+        const p = raw
+        whatsappRealtimeListenersRef.current.forEach((fn) => {
+          try {
+            fn(p)
+          } catch {
+            /* noop */
+          }
+        })
         return
       }
-      const p = raw
-      whatsappRealtimeListenersRef.current.forEach((fn) => {
-        try {
-          fn(p)
-        } catch {
-          /* noop */
+
+      if (isAdminWhatsappSupportRequestedPayload(raw)) {
+        const p = raw
+        whatsappRealtimeListenersRef.current.forEach((fn) => {
+          try {
+            fn(p)
+          } catch {
+            /* noop */
+          }
+        })
+
+        const displayName =
+          p.customerName?.trim() ||
+          p.customerPhone ||
+          "Cliente"
+        const subtitle = `${displayName} · ${p.customerPhone}`
+
+        setWhatsappSupportByConversation((prev) => ({
+          ...prev,
+          [p.conversationId]: {
+            customerName: displayName,
+            customerPhone: p.customerPhone,
+            at: p.at,
+          },
+        }))
+
+        setNotifications((prev) => {
+          const next: AdminNotification = {
+            id: `${p.type}-${p.conversationId}-${Date.now()}`,
+            kind: "whatsapp_support",
+            resourceId: p.conversationId,
+            at: p.at,
+            title: "Cliente necesita atención (WhatsApp)",
+            subtitle,
+            read: false,
+          }
+          return [next, ...prev].slice(0, 40)
+        })
+
+        const path = pathnameRef.current
+        const onMessages = isMessagesPath(path)
+        if (!onMessages) {
+          startSupportAlertLoop()
         }
-      })
+
+        const conversationQuery = encodeURIComponent(p.conversationId)
+        const openChat = () => {
+          routerRef.current.push(`/messages?conversation=${conversationQuery}`)
+        }
+
+        toast.custom(
+          (tid) => (
+            <button
+              type="button"
+              className="group flex w-full max-w-sm flex-col gap-0.5 rounded-lg border border-amber-400/70 bg-amber-50 px-3 py-3 text-left text-amber-950 shadow-md transition hover:bg-amber-100/90"
+              onClick={() => {
+                toast.dismiss(tid)
+                openChat()
+              }}
+            >
+              <span className="text-sm font-semibold leading-snug">
+                Un cliente necesita atención en WhatsApp
+              </span>
+              <span className="text-xs leading-snug text-amber-900/90">
+                {subtitle}
+              </span>
+              <span className="pt-0.5 text-[11px] font-medium text-amber-800 underline-offset-2 group-hover:underline">
+                Tocar para abrir la conversación
+              </span>
+            </button>
+          ),
+          { duration: 60_000 },
+        )
+
+        return
+      }
     })
 
     return () => {
+      stopSupportAlertLoop()
       socket.removeAllListeners()
       socket.close()
       socketRef.current = null
@@ -292,6 +431,9 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
       notifications,
       badgeCount,
       removeNotification,
+      whatsappSupportByConversation,
+      whatsappSupportPendingCount,
+      acknowledgeWhatsappSupportConversation,
       subscribeToOrderRealtime,
       subscribeToReservationRealtime,
       subscribeToWhatsappRealtime,
@@ -301,6 +443,9 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
       notifications,
       badgeCount,
       removeNotification,
+      whatsappSupportByConversation,
+      whatsappSupportPendingCount,
+      acknowledgeWhatsappSupportConversation,
       subscribeToOrderRealtime,
       subscribeToReservationRealtime,
       subscribeToWhatsappRealtime,

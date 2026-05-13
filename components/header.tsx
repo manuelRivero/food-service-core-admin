@@ -42,6 +42,7 @@ export function Header() {
     notifications,
     badgeCount,
     removeNotification,
+    acknowledgeWhatsappSupportConversation,
   } = useAdminSocket()
   const canSeeNotifications = role === "ADMIN" || role === "OWNER"
 
@@ -57,8 +58,16 @@ export function Header() {
 
   function handleOpenNotification(n: {
     id: string
-    kind: "order" | "reservation"
+    kind: "order" | "reservation" | "whatsapp_support"
+    resourceId: string
   }) {
+    if (n.kind === "whatsapp_support") {
+      acknowledgeWhatsappSupportConversation(n.resourceId)
+      router.push(
+        `/messages?conversation=${encodeURIComponent(n.resourceId)}`,
+      )
+      return
+    }
     removeNotification(n.id)
     router.push(n.kind === "order" ? "/orders" : "/reservations")
   }

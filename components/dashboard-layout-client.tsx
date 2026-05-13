@@ -17,14 +17,14 @@ export function DashboardLayoutClient({
 }) {
   return (
     <SidebarProvider>
-      {variant === "super-admin" ? <SuperAdminSidebar /> : <AppSidebar />}
-      <SidebarInset>
-        <AdminSocketProvider>
+      <AdminSocketProvider>
+        {variant === "super-admin" ? <SuperAdminSidebar /> : <AppSidebar />}
+        <SidebarInset>
           <Toaster richColors closeButton position="top-right" />
           <Header />
           <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
-        </AdminSocketProvider>
-      </SidebarInset>
+        </SidebarInset>
+      </AdminSocketProvider>
     </SidebarProvider>
   )
 }
