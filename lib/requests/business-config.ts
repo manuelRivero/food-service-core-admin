@@ -20,15 +20,25 @@ export interface AdminBusinessConfig {
   reservation_allow_same_day: boolean
   orders_enabled: boolean
   checkout_enabled: boolean
-  /** Si el backend lo expone: retiro en local; condiciona validación de dirección. */
-  takeaway_enabled?: boolean
+  delivery_enabled: boolean
+  takeaway_enabled: boolean
+  pickup_instructions: string | null
 }
 
 export type AdminBusinessConfigPatch = Partial<AdminBusinessConfig>
 
+function normalizeAdminBusinessConfig(data: AdminBusinessConfig): AdminBusinessConfig {
+  return {
+    ...data,
+    delivery_enabled: data.delivery_enabled ?? true,
+    takeaway_enabled: data.takeaway_enabled ?? false,
+    pickup_instructions: data.pickup_instructions ?? null,
+  }
+}
+
 export async function fetchAdminBusinessConfig(): Promise<AdminBusinessConfig> {
   const { data } = await api.get<AdminBusinessConfig>(ADMIN_BUSINESS_CONFIG_PATH)
-  return data
+  return normalizeAdminBusinessConfig(data)
 }
 
 export async function upsertAdminBusinessConfig(
@@ -38,7 +48,7 @@ export async function upsertAdminBusinessConfig(
     ADMIN_BUSINESS_CONFIG_PATH,
     payload,
   )
-  return data
+  return normalizeAdminBusinessConfig(data)
 }
 
 export async function patchAdminBusinessConfig(
@@ -48,7 +58,7 @@ export async function patchAdminBusinessConfig(
     ADMIN_BUSINESS_CONFIG_PATH,
     payload,
   )
-  return data
+  return normalizeAdminBusinessConfig(data)
 }
 
 export async function resetAdminBusinessConfig(): Promise<void> {

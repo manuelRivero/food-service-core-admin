@@ -6,6 +6,8 @@ import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { SettingsSection } from "@/components/settings/settings-section"
 import { ToggleField } from "@/components/settings/toggle-field"
 import { NumberInputField } from "@/components/settings/number-input-field"
@@ -101,6 +103,13 @@ export default function SettingsPage() {
       return false
     }
 
+    if (!settings.delivery_enabled && !settings.takeaway_enabled) {
+      toast.error(
+        "No podés desactivar envío y retiro a la vez: dejá al menos uno habilitado.",
+      )
+      return false
+    }
+
     return true
   }
 
@@ -169,7 +178,7 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Configuración</h1>
         <p className="text-muted-foreground">
-          Configura el comportamiento del negocio, automatización y reservas
+          Configura el comportamiento del negocio, automatización, entrega y reservas
         </p>
       </div>
 
@@ -289,7 +298,7 @@ export default function SettingsPage() {
           />
         </SettingsSection>
 
-        {/* Orders */}
+        {/* Pedidos: switches de pedidos/checkout comentados temporalmente
         <SettingsSection
           title="Pedidos"
           description="Configura las opciones de pedidos"
@@ -313,6 +322,68 @@ export default function SettingsPage() {
             }
             disabled={!settings.orders_enabled}
           />
+        </SettingsSection>
+        */}
+
+        <SettingsSection
+          title="Entrega y retiro"
+          description="Al menos una opción debe estar activa: envío a domicilio o retiro en local"
+        >
+          <ToggleField
+            id="delivery-enabled"
+            label="Envío a domicilio"
+            description="Permitir pedidos con entrega"
+            checked={settings.delivery_enabled}
+            onCheckedChange={(checked) => {
+              if (!checked && !settings.takeaway_enabled) {
+                toast.error(
+                  "No podés desactivar envío y retiro a la vez: habilitá retiro en local o dejá el envío activo.",
+                )
+                return
+              }
+              updateSetting("delivery_enabled", checked)
+            }}
+          />
+          <ToggleField
+            id="takeaway-enabled"
+            label="Retiro en local"
+            description="Permitir que el cliente retire el pedido en el local"
+            checked={settings.takeaway_enabled}
+            onCheckedChange={(checked) => {
+              if (!checked && !settings.delivery_enabled) {
+                toast.error(
+                  "No podés desactivar envío y retiro a la vez: habilitá envío a domicilio o dejá el retiro activo.",
+                )
+                return
+              }
+              updateSetting("takeaway_enabled", checked)
+            }}
+          />
+          <div className="flex flex-col gap-2">
+            <Label
+              htmlFor="pickup-instructions"
+              className={!settings.takeaway_enabled ? "text-muted-foreground" : ""}
+            >
+              Instrucciones de retiro (opcional)
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              Texto que verá el cliente al elegir retiro (por ejemplo, acceso o mostrador).
+            </p>
+            <Textarea
+              id="pickup-instructions"
+              rows={3}
+              placeholder="Ej.: Retirar por el mostrador de la calle lateral."
+              value={settings.pickup_instructions ?? ""}
+              onChange={(e) => {
+                const v = e.target.value
+                updateSetting(
+                  "pickup_instructions",
+                  v.trim() === "" ? null : v,
+                )
+              }}
+              disabled={!settings.takeaway_enabled}
+            />
+          </div>
         </SettingsSection>
 
         {/* Reservations */}
