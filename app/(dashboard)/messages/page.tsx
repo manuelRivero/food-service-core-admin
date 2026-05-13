@@ -20,10 +20,16 @@ import {
   patchAdminWhatsappConversationBotStatus,
   sendAdminWhatsappMessage,
 } from "@/lib/requests/messages"
-import type { AdminWhatsappMessageCreatedPayload } from "@/lib/types/admin-realtime"
+import type {
+  AdminWhatsappMessageCreatedPayload,
+  AdminWhatsappBotAutoReactivatedPayload,
+} from "@/lib/types/admin-realtime"
 
 const BOT_REENGAGE_MESSAGE =
   "Muchas gracias por escribirnos. Fue un placer ayudarte. Te dejamos nuevamente con nuestro asistente para que pueda acompañarte en tus próximas consultas. Estamos para vos siempre."
+
+const BOT_AUTO_REENGAGE_MESSAGE =
+  "¡Hola! Esperamos que tu consulta haya sido atendida correctamente. Tu conversación ha sido relevada de forma automática a nuestro asistente de inteligencia artificial. Si sentís que tu duda no fue respondida a tiempo, podés escribir \"Necesito ayuda\" y te aseguramos que tu atención será priorizada de inmediato. Recordá que nuestro asistente puede ayudarte con el menú, hacer reservas y realizar tu pedido. ¡Estamos para vos siempre!"
 
 function debugBotSync(message: string, payload?: Record<string, unknown>): void {
   const timestamp = new Date().toISOString()
@@ -108,7 +114,10 @@ function buildRealtimeMessage(
   payload: AdminWhatsappMessageCreatedPayload,
   chat?: ChatItemData,
 ): Message {
-  if (payload.message.trim() === BOT_REENGAGE_MESSAGE) {
+  if (
+    payload.message.trim() === BOT_REENGAGE_MESSAGE ||
+    payload.message.trim() === BOT_AUTO_REENGAGE_MESSAGE
+  ) {
     return {
       id: payload.messageId,
       content: payload.message,
@@ -210,7 +219,10 @@ function MessagesPageContent() {
       for (const item of data.items) {
         const conversationId = item.conversation.id
         if (!conversationId) continue
-        if (item.message.trim() === BOT_REENGAGE_MESSAGE) {
+        if (
+          item.message.trim() === BOT_REENGAGE_MESSAGE ||
+          item.message.trim() === BOT_AUTO_REENGAGE_MESSAGE
+        ) {
           const message: Message = {
             id: item.id,
             content: item.message,
@@ -434,6 +446,35 @@ function MessagesPageContent() {
       return [...rows, ...prev]
     })
   }, [whatsappSupportByConversation])
+
+  useEffect(() => {
+    return subscribeToWhatsappRealtime((payload) => {
+      if (payload.type !== "whatsapp.bot_auto_reactivated") return
+
+      const p = payload as AdminWhatsappBotAutoReactivatedPayload
+      const { conversationId } = p
+
+      setBotEnabledByConversation((prev) => ({
+        ...prev,
+        [conversationId]: true,
+      }))
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.id === conversationId ? { ...chat, botEnabled: true } : chat,
+        ),
+      )
+
+      void sendAdminWhatsappMessage(
+        conversationId,
+        BOT_AUTO_REENGAGE_MESSAGE,
+        { skipHumanTakeover: true },
+      ).catch(() => {
+        toast.warning(
+          "El bot fue reactivado automáticamente, pero no se pudo enviar el mensaje al cliente.",
+        )
+      })
+    })
+  }, [subscribeToWhatsappRealtime])
 
   useEffect(() => {
     const id = searchParams.get("conversation")

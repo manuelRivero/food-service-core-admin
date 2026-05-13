@@ -118,14 +118,26 @@ export interface AdminWhatsappSupportRequestedPayload {
   conversationId: string
   customerId: string
   customerPhone: string
-  /** Opcional en API; si falta se muestra el teléfono. */
-  customerName?: string
+  /** Puede llegar como null desde el backend cuando no hay nombre registrado. */
+  customerName?: string | null
+  at: string
+}
+
+/**
+ * Evento `admin:whatsapp` — el bot fue reactivado automáticamente por el timeout
+ * de handoff configurado en `human_handoff_auto_timeout_minutes`.
+ */
+export interface AdminWhatsappBotAutoReactivatedPayload {
+  type: "whatsapp.bot_auto_reactivated"
+  businessId: string
+  conversationId: string
   at: string
 }
 
 export type AdminWhatsappRealtimePayload =
   | AdminWhatsappMessageCreatedPayload
   | AdminWhatsappSupportRequestedPayload
+  | AdminWhatsappBotAutoReactivatedPayload
 
 export function isAdminWhatsappMessageCreatedPayload(
   value: unknown,
@@ -159,8 +171,10 @@ export function isAdminWhatsappSupportRequestedPayload(
   ) {
     return false
   }
+  // customerName puede llegar como null desde el backend además de undefined o string
   if (
     o.customerName !== undefined &&
+    o.customerName !== null &&
     typeof o.customerName !== "string"
   ) {
     return false
@@ -168,11 +182,25 @@ export function isAdminWhatsappSupportRequestedPayload(
   return true
 }
 
+export function isAdminWhatsappBotAutoReactivatedPayload(
+  value: unknown,
+): value is AdminWhatsappBotAutoReactivatedPayload {
+  if (!value || typeof value !== "object") return false
+  const o = value as Record<string, unknown>
+  return (
+    o.type === "whatsapp.bot_auto_reactivated" &&
+    typeof o.businessId === "string" &&
+    typeof o.conversationId === "string" &&
+    typeof o.at === "string"
+  )
+}
+
 export function isAdminWhatsappRealtimePayload(
   value: unknown,
 ): value is AdminWhatsappRealtimePayload {
   return (
     isAdminWhatsappMessageCreatedPayload(value) ||
-    isAdminWhatsappSupportRequestedPayload(value)
+    isAdminWhatsappSupportRequestedPayload(value) ||
+    isAdminWhatsappBotAutoReactivatedPayload(value)
   )
 }

@@ -25,6 +25,7 @@ import {
   isAdminReservationRealtimePayload,
   isAdminWhatsappMessageCreatedPayload,
   isAdminWhatsappSupportRequestedPayload,
+  isAdminWhatsappBotAutoReactivatedPayload,
   type AdminOrderRealtimePayload,
   type AdminReservationRealtimePayload,
   type AdminWhatsappRealtimePayload,
@@ -328,6 +329,18 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
 
     socket.on("admin:whatsapp", (raw: unknown) => {
       if (isAdminWhatsappMessageCreatedPayload(raw)) {
+        const p = raw
+        whatsappRealtimeListenersRef.current.forEach((fn) => {
+          try {
+            fn(p)
+          } catch {
+            /* noop */
+          }
+        })
+        return
+      }
+
+      if (isAdminWhatsappBotAutoReactivatedPayload(raw)) {
         const p = raw
         whatsappRealtimeListenersRef.current.forEach((fn) => {
           try {
