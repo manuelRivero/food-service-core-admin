@@ -1,8 +1,10 @@
 /**
- * Alerta sonora de máximo volumen para ambientes ruidosos (restaurante).
- * Usa onda cuadrada + compresor dinámico para maximizar la percepción sonora
- * sin clipping ni silenciamiento por políticas del navegador.
+ * Alerta de soporte: patrón tipo alarma (pitidos rápidos alternando tonos agudos)
+ * para ambientes ruidosos. Onda cuadrada + compresor para volumen máximo seguro.
  */
+
+/** Milisegundos entre cada ráfaga de pitidos mientras haya soporte pendiente. */
+const ALERT_BURST_INTERVAL_MS = 3200
 
 let intervalId: ReturnType<typeof setInterval> | null = null
 let audioContext: AudioContext | null = null
@@ -27,7 +29,7 @@ function getAudioContext(): AudioContext | null {
   }
 }
 
-async function playChimeOnce(): Promise<void> {
+async function playUrgentAlertBurst(): Promise<void> {
   const ctx = getAudioContext()
   if (!ctx) return
 
@@ -51,30 +53,41 @@ async function playChimeOnce(): Promise<void> {
   compressor.release.setValueAtTime(0.1, t0)
   compressor.connect(ctx.destination)
 
-  function tone(freq: number, start: number, dur: number): void {
+  /** Pitido corto y fuerte (ataque lineal para pulsos de ~60 ms). */
+  function beep(freq: number, start: number, durSec: number): void {
     const o = ctx!.createOscillator()
     const g = ctx!.createGain()
-    // Onda cuadrada: 3-4× más perceptible que sinusoidal a igual amplitud
     o.type = "square"
     o.frequency.setValueAtTime(freq, start)
+    const attack = 0.004
+    const release = Math.max(0.012, durSec * 0.35)
     g.gain.setValueAtTime(0.0001, start)
-    g.gain.exponentialRampToValueAtTime(0.7, start + 0.02)
-    g.gain.exponentialRampToValueAtTime(0.0001, start + dur)
+    g.gain.linearRampToValueAtTime(0.68, start + attack)
+    g.gain.setValueAtTime(0.68, start + durSec - release)
+    g.gain.exponentialRampToValueAtTime(0.0001, start + durSec)
     o.connect(g)
     g.connect(compressor)
     o.start(start)
-    o.stop(start + dur + 0.01)
+    o.stop(start + durSec + 0.008)
   }
 
-  tone(698, t0, 0.15)
-  tone(932, t0 + 0.17, 0.15)
-  tone(784, t0 + 0.34, 0.25)
+  // Ráfaga urgente: 10 pitidos alternando agudo/medio (corta el ruido del local).
+  const fHigh = 1550
+  const fLow = 980
+  const beepLen = 0.058
+  const gap = 0.055
+  let t = t0
+  for (let i = 0; i < 10; i++) {
+    const freq = i % 2 === 0 ? fHigh : fLow
+    beep(freq, t, beepLen)
+    t += beepLen + gap
+  }
 }
 
 export function startSupportAlertLoop(): void {
   stopSupportAlertLoop()
-  void playChimeOnce()
-  intervalId = setInterval(() => void playChimeOnce(), 8200)
+  void playUrgentAlertBurst()
+  intervalId = setInterval(() => void playUrgentAlertBurst(), ALERT_BURST_INTERVAL_MS)
 }
 
 export function stopSupportAlertLoop(): void {
