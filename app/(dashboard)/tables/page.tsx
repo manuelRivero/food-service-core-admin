@@ -12,15 +12,24 @@ import {
   Users,
   Trash2,
   Loader2,
-  X,
   CalendarClock,
 } from "lucide-react"
 
 import { useAdminSocket } from "@/contexts/admin-socket-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -29,7 +38,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
 import {
   adminTableToUi,
@@ -40,6 +48,11 @@ import {
   uiTableToPatch,
   type UiTable,
 } from "@/lib/requests/admin-tables"
+import {
+  createAdminEnvironment,
+  fetchAdminEnvironments,
+  type AdminEnvironment,
+} from "@/lib/requests/admin-environments"
 import {
   aggregateReservationsByTableId,
   fetchTodayReservationRaws,
@@ -75,9 +88,41 @@ function apiErrorMessage(e: unknown, fallback: string): string {
   return fallback
 }
 
-type SaveBanner =
-  | { kind: "success"; message: string }
-  | { kind: "error"; message: string }
+type CreateTableForm = {
+  environmentId: string
+  name: string
+  capacity: string
+  shape: "circle" | "rect"
+  isActive: boolean
+}
+
+const DEFAULT_CREATE_FORM: CreateTableForm = {
+  environmentId: "",
+  name: "",
+  capacity: "4",
+  shape: "circle",
+  isActive: true,
+}
+
+/** Límite de caracteres del nombre (igual que la longitud de «mesa de prueba»). */
+const TABLE_NAME_MAX_LENGTH = "mesa de prueba".length
+
+const ENV_NAME_MAX_LENGTH = 120
+const ENV_DESCRIPTION_MAX_LENGTH = 500
+
+type CreateEnvironmentForm = {
+  name: string
+  description: string
+  isOutdoor: boolean
+  isActive: boolean
+}
+
+const DEFAULT_CREATE_ENVIRONMENT_FORM: CreateEnvironmentForm = {
+  name: "",
+  description: "",
+  isOutdoor: false,
+  isActive: true,
+}
 
 export default function TablesPage() {
   const { subscribeToReservationRealtime } = useAdminSocket()
@@ -87,7 +132,6 @@ export default function TablesPage() {
   const [savingLayout, setSavingLayout] = useState(false)
   const [savingProperties, setSavingProperties] = useState(false)
   const [deletingTable, setDeletingTable] = useState(false)
-  const [saveBanner, setSaveBanner] = useState<SaveBanner | null>(null)
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState("")
   const [reservationByTableId, setReservationByTableId] = useState<
@@ -99,13 +143,42 @@ export default function TablesPage() {
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const canvasRef = useRef<HTMLDivElement>(null)
 
+  const [createTableOpen, setCreateTableOpen] = useState(false)
+  const [createTableForm, setCreateTableForm] = useState<CreateTableForm>(DEFAULT_CREATE_FORM)
+  const [createTableErrors, setCreateTableErrors] = useState<{
+    environmentId?: string
+    name?: string
+    capacity?: string
+  }>({})
+  const [creatingTable, setCreatingTable] = useState(false)
+
+  const [environments, setEnvironments] = useState<AdminEnvironment[]>([])
+  const [createEnvironmentOpen, setCreateEnvironmentOpen] = useState(false)
+  const [createEnvironmentForm, setCreateEnvironmentForm] = useState<CreateEnvironmentForm>(
+    DEFAULT_CREATE_ENVIRONMENT_FORM,
+  )
+  const [createEnvironmentErrors, setCreateEnvironmentErrors] = useState<{
+    name?: string
+    description?: string
+  }>({})
+  const [creatingEnvironment, setCreatingEnvironment] = useState(false)
+
   const environmentOptions = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const t of tables) {
-      map.set(t.environmentId, t.environmentName)
+    const byId = new Map<string, string>()
+    for (const e of environments) {
+      byId.set(e.id, e.name)
     }
-    return Array.from(map.entries()).map(([id, name]) => ({ id, name }))
-  }, [tables])
+    for (const t of tables) {
+      if (!byId.has(t.environmentId)) {
+        byId.set(t.environmentId, t.environmentName)
+      }
+    }
+    return Array.from(byId.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "es"))
+  }, [environments, tables])
+
+  const hasEnvironments = environmentOptions.length > 0
 
   /** Un ambiente a la vez: no hay vista “todos mezclados”. */
   const activeEnvironmentId = useMemo(() => {
@@ -137,11 +210,36 @@ export default function TablesPage() {
     setIsLoading(true)
     setLoadError(null)
     try {
-      const rows = await fetchAdminTables()
+      const [tablesResult, envResult] = await Promise.allSettled([
+        fetchAdminTables(),
+        fetchAdminEnvironments(),
+      ])
+
+      if (tablesResult.status === "rejected") {
+        setTables([])
+        setEnvironments([])
+        setLoadError(
+          apiErrorMessage(tablesResult.reason, "No se pudieron cargar las mesas."),
+        )
+        return
+      }
+
+      const rows = tablesResult.value
       setTables(rows.map(adminTableToUi))
+
+      if (envResult.status === "fulfilled") {
+        setEnvironments(envResult.value)
+      } else {
+        setEnvironments([])
+        toast.error("No se pudieron cargar los ambientes", {
+          description: apiErrorMessage(
+            envResult.reason,
+            "Se usarán los datos de ambiente que vienen con cada mesa.",
+          ),
+        })
+      }
+
       void loadReservationsMap()
-    } catch (e) {
-      setLoadError(apiErrorMessage(e, "No se pudieron cargar las mesas."))
     } finally {
       setIsLoading(false)
     }
@@ -236,45 +334,115 @@ export default function TablesPage() {
     [selectedTableId],
   )
 
-  const addNewTable = useCallback(async () => {
-    const envId = activeEnvironmentId || null
+  const addNewTable = useCallback(() => {
+    const preferred =
+      activeEnvironmentId && environmentOptions.some((e) => e.id === activeEnvironmentId)
+        ? activeEnvironmentId
+        : (environmentOptions[0]?.id ?? "")
+    setCreateTableForm({ ...DEFAULT_CREATE_FORM, environmentId: preferred })
+    setCreateTableErrors({})
+    setCreateTableOpen(true)
+  }, [activeEnvironmentId, environmentOptions])
 
-    if (!envId) {
-      const msg =
-        "No hay ambientes disponibles. Debe existir al menos una mesa o un ambiente en el sistema para crear otra."
-      toast.error("Sin ambiente", { description: msg })
-      setSaveBanner({ kind: "error", message: msg })
+  const openCreateEnvironment = useCallback(() => {
+    setCreateEnvironmentForm(DEFAULT_CREATE_ENVIRONMENT_FORM)
+    setCreateEnvironmentErrors({})
+    setCreateEnvironmentOpen(true)
+  }, [])
+
+  const handleCreateEnvironmentSubmit = useCallback(async () => {
+    const errors: { name?: string; description?: string } = {}
+    const nameTrim = createEnvironmentForm.name.trim()
+    if (!nameTrim) {
+      errors.name = "El nombre es obligatorio."
+    } else if (nameTrim.length > ENV_NAME_MAX_LENGTH) {
+      errors.name = `El nombre no puede superar ${ENV_NAME_MAX_LENGTH} caracteres.`
+    }
+
+    const descTrim = createEnvironmentForm.description.trim()
+    if (createEnvironmentForm.description.length > ENV_DESCRIPTION_MAX_LENGTH) {
+      errors.description = `La descripción no puede superar ${ENV_DESCRIPTION_MAX_LENGTH} caracteres.`
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setCreateEnvironmentErrors(errors)
       return
     }
 
-    const nextNum = tables.filter((t) => t.environmentId === envId).length + 1
-    const name = `Mesa ${nextNum}`
+    setCreatingEnvironment(true)
+    try {
+      const created = await createAdminEnvironment({
+        name: nameTrim,
+        description: descTrim === "" ? null : descTrim,
+        isOutdoor: createEnvironmentForm.isOutdoor,
+        isActive: createEnvironmentForm.isActive,
+      })
+      setEnvironments((prev) =>
+        [...prev, created].sort((a, b) => a.name.localeCompare(b.name, "es")),
+      )
+      setSelectedEnvironmentId(created.id)
+      setCreateEnvironmentOpen(false)
+      toast.success("Ambiente creado", { description: created.name })
+    } catch (e) {
+      toast.error("No se pudo crear el ambiente", {
+        description: apiErrorMessage(e, "Intentá de nuevo en unos segundos."),
+      })
+    } finally {
+      setCreatingEnvironment(false)
+    }
+  }, [createEnvironmentForm])
 
+  const handleCreateTableSubmit = useCallback(async () => {
+    const errors: { environmentId?: string; name?: string; capacity?: string } = {}
+    const envId = createTableForm.environmentId.trim()
+    if (!envId) {
+      errors.environmentId = "Seleccioná un ambiente."
+    } else if (!environmentOptions.some((e) => e.id === envId)) {
+      errors.environmentId = "Ese ambiente ya no está disponible. Elegí otro en la lista."
+    }
+
+    const trimmedName = createTableForm.name.trim()
+    if (!trimmedName) {
+      errors.name = "El nombre es requerido."
+    } else if (trimmedName.length > TABLE_NAME_MAX_LENGTH) {
+      errors.name = `El nombre no puede superar ${TABLE_NAME_MAX_LENGTH} caracteres (como máximo «mesa de prueba»).`
+    }
+    const cap = parseInt(createTableForm.capacity, 10)
+    if (!createTableForm.capacity.trim() || isNaN(cap) || cap < 1) {
+      errors.capacity = "La capacidad debe ser un número mayor a 0."
+    }
+    if (Object.keys(errors).length > 0) {
+      setCreateTableErrors(errors)
+      return
+    }
+
+    setCreatingTable(true)
     try {
       const created = await createAdminTable({
         environmentId: envId,
-        name,
-        capacity: 4,
+        name: trimmedName,
+        capacity: cap,
       })
-      const ui = adminTableToUi(created)
+      let ui = adminTableToUi(created)
+      ui = { ...ui, shape: createTableForm.shape, isActive: createTableForm.isActive }
       setTables((prev) => [...prev, ui])
       setSelectedTableId(ui.id)
-      const desc = `Se creó ${ui.name}`
-      toast.success("Mesa creada", { description: desc })
-      setSaveBanner({ kind: "success", message: desc })
+      setSelectedEnvironmentId(ui.environmentId)
+      setCreateTableOpen(false)
+      toast.success("Mesa creada", { description: `Se creó ${ui.name}` })
     } catch (e) {
       const msg = apiErrorMessage(e, "No se pudo crear la mesa.")
       toast.error("Error al crear mesa", { description: msg })
-      setSaveBanner({ kind: "error", message: msg })
+    } finally {
+      setCreatingTable(false)
     }
-  }, [activeEnvironmentId, tables])
+  }, [createTableForm, environmentOptions])
 
   const saveLayout = useCallback(async () => {
     const toSave = tables.filter((t) => t.environmentId === activeEnvironmentId)
     if (toSave.length === 0) return
 
     setSavingLayout(true)
-    setSaveBanner(null)
     const loadingId = toast.loading("Guardando layout…", {
       description: `Sincronizando ${toSave.length} ${toSave.length === 1 ? "mesa" : "mesas"} del ambiente actual.`,
     })
@@ -285,13 +453,11 @@ export default function TablesPage() {
       toast.dismiss(loadingId)
       const desc = `Se actualizaron ${toSave.length} ${toSave.length === 1 ? "mesa" : "mesas"} en este ambiente.`
       toast.success("Layout guardado", { description: desc })
-      setSaveBanner({ kind: "success", message: desc })
       await loadTables()
     } catch (e) {
       toast.dismiss(loadingId)
       const msg = apiErrorMessage(e, "No se pudo guardar el layout de este ambiente.")
       toast.error("Error al guardar layout", { description: msg })
-      setSaveBanner({ kind: "error", message: msg })
     } finally {
       setSavingLayout(false)
     }
@@ -299,8 +465,14 @@ export default function TablesPage() {
 
   const saveSelectedProperties = useCallback(async () => {
     if (!selectedTable) return
+    const nameTrim = selectedTable.name.trim()
+    if (nameTrim.length > TABLE_NAME_MAX_LENGTH) {
+      toast.error("Nombre demasiado largo", {
+        description: `Como máximo ${TABLE_NAME_MAX_LENGTH} caracteres (el largo de «mesa de prueba»).`,
+      })
+      return
+    }
     setSavingProperties(true)
-    setSaveBanner(null)
     const loadingId = toast.loading("Guardando mesa…", {
       description: selectedTable.name,
     })
@@ -312,12 +484,10 @@ export default function TablesPage() {
       toast.dismiss(loadingId)
       const desc = `${updated.name} se actualizó correctamente.`
       toast.success("Cambios guardados", { description: desc })
-      setSaveBanner({ kind: "success", message: desc })
     } catch (e) {
       toast.dismiss(loadingId)
       const msg = apiErrorMessage(e, "No se pudo actualizar la mesa.")
       toast.error("Error al guardar la mesa", { description: msg })
-      setSaveBanner({ kind: "error", message: msg })
     } finally {
       setSavingProperties(false)
     }
@@ -328,7 +498,6 @@ export default function TablesPage() {
     const id = selectedTable.id
     const name = selectedTable.name
     setDeletingTable(true)
-    setSaveBanner(null)
     const loadingId = toast.loading("Eliminando mesa…", { description: name })
     try {
       await deleteAdminTable(id)
@@ -337,12 +506,10 @@ export default function TablesPage() {
       toast.dismiss(loadingId)
       const desc = `Se eliminó ${name}.`
       toast.success("Mesa eliminada", { description: desc })
-      setSaveBanner({ kind: "success", message: desc })
     } catch (e) {
       toast.dismiss(loadingId)
       const msg = apiErrorMessage(e, "No se pudo eliminar la mesa.")
       toast.error("Error al eliminar", { description: msg })
-      setSaveBanner({ kind: "error", message: msg })
     } finally {
       setDeletingTable(false)
     }
@@ -359,6 +526,282 @@ export default function TablesPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <Dialog open={createTableOpen} onOpenChange={setCreateTableOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nueva mesa</DialogTitle>
+            <DialogDescription>
+              Elegí el ambiente y completá los datos de la mesa. Todos los campos marcados con * son
+              obligatorios.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="new-table-environment">Ambiente *</Label>
+              <Select
+                value={createTableForm.environmentId || undefined}
+                onValueChange={(id) => {
+                  setCreateTableForm((f) => ({ ...f, environmentId: id }))
+                  if (createTableErrors.environmentId) {
+                    setCreateTableErrors((er) => ({ ...er, environmentId: undefined }))
+                  }
+                }}
+                disabled={creatingTable || environmentOptions.length === 0}
+              >
+                <SelectTrigger id="new-table-environment" className="w-full">
+                  <SelectValue
+                    placeholder={
+                      environmentOptions.length === 0
+                        ? "Sin ambientes disponibles"
+                        : "Elegí un ambiente"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {environmentOptions.map((env) => (
+                    <SelectItem key={env.id} value={env.id}>
+                      {env.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {environmentOptions.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Creá un ambiente con el botón «Crear ambiente» junto al selector del plano.
+                </p>
+              ) : null}
+              {createTableErrors.environmentId ? (
+                <p className="text-sm text-destructive">{createTableErrors.environmentId}</p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-table-name">Nombre *</Label>
+              <Input
+                id="new-table-name"
+                value={createTableForm.name}
+                maxLength={TABLE_NAME_MAX_LENGTH}
+                onChange={(e) => {
+                  setCreateTableForm((f) => ({ ...f, name: e.target.value }))
+                  if (createTableErrors.name) setCreateTableErrors((er) => ({ ...er, name: undefined }))
+                }}
+                placeholder="Ej: Mesa 1"
+                disabled={creatingTable}
+              />
+              <p className="text-xs text-muted-foreground">
+                Como máximo {TABLE_NAME_MAX_LENGTH} caracteres (largo de «mesa de prueba»).
+              </p>
+              {createTableErrors.name && (
+                <p className="text-sm text-destructive">{createTableErrors.name}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-table-capacity">Capacidad *</Label>
+              <Input
+                id="new-table-capacity"
+                type="number"
+                min={1}
+                max={99}
+                value={createTableForm.capacity}
+                onChange={(e) => {
+                  setCreateTableForm((f) => ({ ...f, capacity: e.target.value }))
+                  if (createTableErrors.capacity) setCreateTableErrors((er) => ({ ...er, capacity: undefined }))
+                }}
+                disabled={creatingTable}
+              />
+              {createTableErrors.capacity && (
+                <p className="text-sm text-destructive">{createTableErrors.capacity}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-table-shape">Forma *</Label>
+              <Select
+                value={createTableForm.shape}
+                onValueChange={(value: "circle" | "rect") =>
+                  setCreateTableForm((f) => ({ ...f, shape: value }))
+                }
+                disabled={creatingTable}
+              >
+                <SelectTrigger id="new-table-shape">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="circle">
+                    <span className="flex items-center gap-2">
+                      <Circle className="h-4 w-4" />
+                      Circular
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="rect">
+                    <span className="flex items-center gap-2">
+                      <Square className="h-4 w-4" />
+                      Rectangular
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-table-status">Estado *</Label>
+              <Select
+                value={createTableForm.isActive ? "active" : "inactive"}
+                onValueChange={(value) =>
+                  setCreateTableForm((f) => ({ ...f, isActive: value === "active" }))
+                }
+                disabled={creatingTable}
+              >
+                <SelectTrigger id="new-table-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">
+                    <span className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                      Activa
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="inactive">
+                    <span className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-gray-400" />
+                      Inactiva
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCreateTableOpen(false)}
+              disabled={creatingTable}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleCreateTableSubmit()}
+              disabled={creatingTable}
+            >
+              {creatingTable ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="mr-2 h-4 w-4" />
+              )}
+              {creatingTable ? "Creando…" : "Crear mesa"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={createEnvironmentOpen} onOpenChange={setCreateEnvironmentOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nuevo ambiente</DialogTitle>
+            <DialogDescription>
+              Definí el nombre y los datos del espacio. Podés agregar mesas en el plano cuando
+              termine la creación.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="new-env-name">Nombre *</Label>
+              <Input
+                id="new-env-name"
+                value={createEnvironmentForm.name}
+                maxLength={ENV_NAME_MAX_LENGTH}
+                onChange={(e) => {
+                  setCreateEnvironmentForm((f) => ({ ...f, name: e.target.value }))
+                  if (createEnvironmentErrors.name) {
+                    setCreateEnvironmentErrors((er) => ({ ...er, name: undefined }))
+                  }
+                }}
+                placeholder="Ej: Salón principal"
+                disabled={creatingEnvironment}
+              />
+              <p className="text-xs text-muted-foreground">
+                Obligatorio, entre 1 y {ENV_NAME_MAX_LENGTH} caracteres.
+              </p>
+              {createEnvironmentErrors.name ? (
+                <p className="text-sm text-destructive">{createEnvironmentErrors.name}</p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-env-description">Descripción</Label>
+              <Textarea
+                id="new-env-description"
+                value={createEnvironmentForm.description}
+                maxLength={ENV_DESCRIPTION_MAX_LENGTH}
+                rows={3}
+                onChange={(e) => {
+                  setCreateEnvironmentForm((f) => ({ ...f, description: e.target.value }))
+                  if (createEnvironmentErrors.description) {
+                    setCreateEnvironmentErrors((er) => ({ ...er, description: undefined }))
+                  }
+                }}
+                placeholder="Opcional"
+                disabled={creatingEnvironment}
+                className="min-h-[80px] resize-y"
+              />
+              <p className="text-xs text-muted-foreground">
+                Opcional, hasta {ENV_DESCRIPTION_MAX_LENGTH} caracteres.
+              </p>
+              {createEnvironmentErrors.description ? (
+                <p className="text-sm text-destructive">{createEnvironmentErrors.description}</p>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="new-env-outdoor"
+                checked={createEnvironmentForm.isOutdoor}
+                onCheckedChange={(v) =>
+                  setCreateEnvironmentForm((f) => ({ ...f, isOutdoor: v === true }))
+                }
+                disabled={creatingEnvironment}
+              />
+              <Label htmlFor="new-env-outdoor" className="text-sm font-normal leading-none">
+                Ambiente al aire libre
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="new-env-active"
+                checked={createEnvironmentForm.isActive}
+                onCheckedChange={(v) =>
+                  setCreateEnvironmentForm((f) => ({ ...f, isActive: v === true }))
+                }
+                disabled={creatingEnvironment}
+              />
+              <Label htmlFor="new-env-active" className="text-sm font-normal leading-none">
+                Ambiente activo
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCreateEnvironmentOpen(false)}
+              disabled={creatingEnvironment}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleCreateEnvironmentSubmit()}
+              disabled={creatingEnvironment}
+            >
+              {creatingEnvironment ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="mr-2 h-4 w-4" />
+              )}
+              {creatingEnvironment ? "Creando…" : "Crear ambiente"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Mesas</h1>
@@ -374,8 +817,15 @@ export default function TablesPage() {
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            onClick={() => void addNewTable()}
-            disabled={savingLayout || savingProperties || deletingTable}
+            onClick={() => addNewTable()}
+            disabled={
+              savingLayout || savingProperties || deletingTable || !hasEnvironments
+            }
+            title={
+              !hasEnvironments
+                ? "Creá al menos un ambiente antes de agregar mesas"
+                : undefined
+            }
           >
             <Plus className="mr-2 h-4 w-4" />
             Agregar mesa
@@ -401,72 +851,71 @@ export default function TablesPage() {
       </div>
 
       {loadError ? (
-        <Alert variant="destructive">
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription className="flex flex-col gap-2">
-            {loadError}
-            <Button variant="outline" size="sm" className="w-fit" onClick={() => void loadTables()}>
-              Reintentar
-            </Button>
-          </AlertDescription>
-        </Alert>
+        <div
+          role="alert"
+          className="flex flex-col gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
+          <p className="font-semibold">Error</p>
+          <p className="text-pretty">{loadError}</p>
+          <Button variant="outline" size="sm" className="w-fit" onClick={() => void loadTables()}>
+            Reintentar
+          </Button>
+        </div>
       ) : null}
 
-      {saveBanner ? (
-        <Alert
-          variant={saveBanner.kind === "error" ? "destructive" : "default"}
-          className={
-            saveBanner.kind === "success"
-              ? "border-emerald-500/40 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/25 dark:text-emerald-50"
-              : undefined
-          }
+      {!loadError && !hasEnvironments ? (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-500/40 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/25 dark:text-amber-50"
         >
-          <div className="flex w-full items-start justify-between gap-3">
-            <div className="min-w-0 flex-1 space-y-1">
-              <AlertTitle>
-                {saveBanner.kind === "success" ? "Operación correcta" : "Algo salió mal"}
-              </AlertTitle>
-              <AlertDescription className="text-pretty">
-                {saveBanner.message}
-              </AlertDescription>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8 shrink-0"
-              onClick={() => setSaveBanner(null)}
-              aria-label="Cerrar aviso"
-            >
-              <X className="size-4" />
-            </Button>
-          </div>
-        </Alert>
+          <p className="font-semibold">No hay ambientes disponibles</p>
+          <p className="mt-2 text-pretty">
+            El plano de mesas depende de un ambiente: sin ninguno creado no se muestra el selector
+            ni podés agregar mesas. Creá el primer ambiente con el botón{" "}
+            <span className="font-medium text-foreground">Crear ambiente</span> (debajo de este
+            aviso). Cuando el ambiente exista, vas a ver el desplegable para elegirlo, podrás usar{" "}
+            <span className="font-medium text-foreground">Agregar mesa</span> y continuar con el
+            layout y los datos de cada mesa como siempre.
+          </p>
+        </div>
       ) : null}
 
       <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <Label htmlFor="environment-filter" className="text-sm font-medium">
-            Ambiente:
-          </Label>
-          <Select
-            value={activeEnvironmentId || ""}
-            onValueChange={setSelectedEnvironmentId}
-            disabled={environmentOptions.length === 0}
+        <div className="flex flex-wrap items-center gap-2">
+          {hasEnvironments ? (
+            <>
+              <Label htmlFor="environment-filter" className="text-sm font-medium">
+                Ambiente:
+              </Label>
+              <Select
+                value={activeEnvironmentId || ""}
+                onValueChange={setSelectedEnvironmentId}
+              >
+                <SelectTrigger id="environment-filter" className="w-[220px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {environmentOptions.map((env) => (
+                    <SelectItem key={env.id} value={env.id}>
+                      {env.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={openCreateEnvironment}
+            disabled={
+              savingLayout || savingProperties || deletingTable || creatingEnvironment
+            }
           >
-            <SelectTrigger id="environment-filter" className="w-[220px]">
-              <SelectValue
-                placeholder={environmentOptions.length === 0 ? "Sin ambientes" : undefined}
-              />
-            </SelectTrigger>
-            <SelectContent>
-              {environmentOptions.map((env) => (
-                <SelectItem key={env.id} value={env.id}>
-                  {env.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <Plus className="mr-2 h-4 w-4" />
+            Crear ambiente
+          </Button>
         </div>
         {reservationsLoading ? (
           <span className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -507,18 +956,28 @@ export default function TablesPage() {
                 onClick={handleCanvasClick}
               >
                 {tablesInActiveEnvironment.length === 0 ? (
-                  <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
+                  <div className="flex h-full flex-col items-center justify-center gap-4 px-4 text-muted-foreground">
                     <Square className="h-12 w-12 opacity-40" />
-                    <p className="text-sm">No hay mesas en este ambiente</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void addNewTable()}
-                      disabled={savingLayout || savingProperties || deletingTable}
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Agregar primera mesa
-                    </Button>
+                    {!hasEnvironments ? (
+                      <p className="max-w-md text-center text-sm text-pretty">
+                        Sin ambientes no hay plano para editar. Creá uno con{" "}
+                        <span className="font-medium text-foreground">Crear ambiente</span> arriba;
+                        cuando aparezca el selector vas a poder agregar mesas aquí.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-sm">No hay mesas en este ambiente</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => addNewTable()}
+                          disabled={savingLayout || savingProperties || deletingTable}
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Agregar primera mesa
+                        </Button>
+                      </>
+                    )}
                   </div>
                 ) : (
                   tablesInActiveEnvironment.map((table) => (
@@ -599,9 +1058,13 @@ export default function TablesPage() {
                 <Input
                   id="table-name"
                   value={selectedTable.name}
+                  maxLength={TABLE_NAME_MAX_LENGTH}
                   onChange={(e) => updateSelectedTable({ name: e.target.value })}
                   placeholder="Ej: Mesa 1"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Como máximo {TABLE_NAME_MAX_LENGTH} caracteres (largo de «mesa de prueba»).
+                </p>
               </div>
 
               <div className="space-y-2">
