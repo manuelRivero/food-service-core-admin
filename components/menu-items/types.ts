@@ -43,6 +43,8 @@ export interface MenuItem {
   imageUrl: string | null
   available: boolean
   featured: boolean
+  price: number | null
+  currencyCode: string | null
   servesPeople: number | null
   ingredients: string | null
   ingredientsNotes: string | null

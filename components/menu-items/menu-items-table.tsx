@@ -106,7 +106,7 @@ export function MenuItemsTable({
               <TableHead>Categoría</TableHead>
               <TableHead>Disponibilidad</TableHead>
               <TableHead>Destacado</TableHead>
-              <TableHead className="text-center">Porciones</TableHead>
+              <TableHead className="text-right">Precio</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
@@ -151,7 +151,7 @@ function MenuItemsTableSkeleton() {
             <TableHead>Categoría</TableHead>
             <TableHead>Disponibilidad</TableHead>
             <TableHead>Destacado</TableHead>
-            <TableHead className="text-center">Porciones</TableHead>
+            <TableHead className="text-right">Precio</TableHead>
             <TableHead className="text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
@@ -176,8 +176,8 @@ function MenuItemsTableSkeleton() {
               <TableCell>
                 <Skeleton className="h-6 w-20 rounded-full" />
               </TableCell>
-              <TableCell>
-                <Skeleton className="mx-auto h-4 w-8" />
+              <TableCell className="text-right">
+                <Skeleton className="ml-auto h-4 w-20" />
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex items-center justify-end gap-1">

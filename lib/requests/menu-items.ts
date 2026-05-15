@@ -16,18 +16,25 @@ export interface FetchAdminMenuItemsParams {
   includeUnavailable?: boolean
 }
 
+export interface UpsertAdminMenuItemPriceInput {
+  amount: number
+  currencyCode: string
+}
+
 export interface UpsertAdminMenuItemInput {
   name?: string
   description?: string | null
   categoryId?: string | null
-  menuCategoryId?: string | null
-  imageUrl?: string | null
+  categoryTag?: string | null
+  sectionId?: string | null
+  image?: string | null
   isAvailable?: boolean
   isFeatured?: boolean
   servesPeople?: number | null
   ingredients?: string | null
   ingredientsNotes?: string | null
   preparation?: string | null
+  price?: UpsertAdminMenuItemPriceInput | null
 }
 
 interface AdminMenuCategoryRaw {
@@ -36,6 +43,13 @@ interface AdminMenuCategoryRaw {
   tag?: string | null
   category_tag?: string | null
   categoryTag?: string | null
+}
+
+interface AdminMenuItemPriceRaw {
+  id?: string
+  currencyCode?: string
+  currency_code?: string
+  amount?: string | number | null
 }
 
 interface AdminMenuItemRaw {
@@ -70,6 +84,7 @@ interface AdminMenuItemRaw {
   ingredients_notes?: string | null
   ingredientsNotes?: string | null
   preparation?: string | null
+  price?: AdminMenuItemPriceRaw | string | number | null
   created_at?: string | null
   createdAt?: string | null
 }
@@ -150,6 +165,36 @@ function toBoolean(value: unknown, fallback = false): boolean {
   return fallback
 }
 
+function parseDecimal(v: string | number | null | undefined): number | null {
+  if (v == null || v === "") return null
+  if (typeof v === "number") return Number.isFinite(v) ? v : null
+  const n = parseFloat(String(v).replace(",", "."))
+  return Number.isFinite(n) ? n : null
+}
+
+function resolveMenuItemPrice(raw: AdminMenuItemRaw): {
+  price: number | null
+  currencyCode: string | null
+} {
+  const priceField = raw.price
+  if (priceField && typeof priceField === "object") {
+    return {
+      price: parseDecimal(priceField.amount),
+      currencyCode: toStringOrNull(
+        priceField.currencyCode ?? priceField.currency_code,
+      ),
+    }
+  }
+  return {
+    price: parseDecimal(
+      typeof priceField === "string" || typeof priceField === "number"
+        ? priceField
+        : null,
+    ),
+    currencyCode: null,
+  }
+}
+
 function mapAdminMenuItem(raw: AdminMenuItemRaw): MenuItem {
   const createdAtRaw = raw.createdAt ?? raw.created_at
   const createdAt = createdAtRaw ? new Date(createdAtRaw) : new Date()
@@ -159,7 +204,9 @@ function mapAdminMenuItem(raw: AdminMenuItemRaw): MenuItem {
     name: String(raw.name ?? ""),
     description: toStringOrNull(raw.description),
     categoryId: toStringOrNull(raw.categoryId ?? raw.category_id),
-    categoryName: toStringOrNull(raw.categoryName ?? raw.category?.name),
+    categoryName: toStringOrNull(
+      raw.categoryName ?? menuCategory?.name ?? raw.category?.name,
+    ),
     menuCategoryId: toStringOrNull(
       menuCategory?.id ?? raw.menuCategoryId ?? raw.menu_category_id,
     ),
@@ -179,6 +226,7 @@ function mapAdminMenuItem(raw: AdminMenuItemRaw): MenuItem {
     imageUrl: toStringOrNull(raw.imageUrl ?? raw.image_url ?? raw.image),
     available: toBoolean(raw.isAvailable ?? raw.is_available, true),
     featured: toBoolean(raw.isFeatured ?? raw.is_featured, false),
+    ...resolveMenuItemPrice(raw),
     servesPeople:
       typeof (raw.servesPeople ?? raw.serves_people) === "number"
         ? (raw.servesPeople ?? raw.serves_people)
@@ -289,28 +337,21 @@ export async function fetchAdminMenuItemById(id: string): Promise<MenuItem> {
 
 function toApiPayload(input: UpsertAdminMenuItemInput): Record<string, unknown> {
   return {
+    ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
+    ...(input.categoryTag !== undefined ? { categoryTag: input.categoryTag } : {}),
+    ...(input.sectionId !== undefined ? { sectionId: input.sectionId } : {}),
     ...(input.name != null ? { name: input.name } : {}),
     ...(input.description !== undefined ? { description: input.description } : {}),
-    ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
-    ...(input.menuCategoryId !== undefined
-      ? {
-          menuCategoryId: input.menuCategoryId,
-          menu_category_id: input.menuCategoryId,
-          menuCategory: input.menuCategoryId,
-          menu_category: input.menuCategoryId,
-        }
-      : {}),
-    ...(input.imageUrl !== undefined
-      ? { imageUrl: input.imageUrl, image: input.imageUrl }
-      : {}),
-    ...(input.isAvailable !== undefined ? { isAvailable: input.isAvailable } : {}),
-    ...(input.isFeatured !== undefined ? { isFeatured: input.isFeatured } : {}),
-    ...(input.servesPeople !== undefined ? { servesPeople: input.servesPeople } : {}),
     ...(input.ingredients !== undefined ? { ingredients: input.ingredients } : {}),
+    ...(input.preparation !== undefined ? { preparation: input.preparation } : {}),
+    ...(input.servesPeople !== undefined ? { servesPeople: input.servesPeople } : {}),
+    ...(input.isFeatured !== undefined ? { isFeatured: input.isFeatured } : {}),
+    ...(input.image !== undefined ? { image: input.image } : {}),
+    ...(input.isAvailable !== undefined ? { isAvailable: input.isAvailable } : {}),
     ...(input.ingredientsNotes !== undefined
       ? { ingredientsNotes: input.ingredientsNotes }
       : {}),
-    ...(input.preparation !== undefined ? { preparation: input.preparation } : {}),
+    ...(input.price != null ? { price: input.price } : {}),
   }
 }
 

@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { formatMenuItemPrice } from "@/lib/format-menu-price"
 import type { MenuItem } from "./types"
 
 interface MenuItemDetailsModalProps {
@@ -90,6 +91,12 @@ export function MenuItemDetailsModal({
               <p className="text-sm text-muted-foreground">Sección del menú</p>
               <p className="mt-1 font-medium">
                 {sectionLabel ?? "Sin sección"}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Precio</p>
+              <p className="mt-1 font-medium tabular-nums">
+                {formatMenuItemPrice(item.price, item.currencyCode)}
               </p>
             </div>
             <div>

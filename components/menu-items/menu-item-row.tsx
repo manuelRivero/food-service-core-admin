@@ -6,6 +6,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { TableCell, TableRow } from "@/components/ui/table"
+import { formatMenuItemPrice } from "@/lib/format-menu-price"
 import { formatMenuCategoryTag, type MenuItem } from "./types"
 
 interface MenuItemRowProps {
@@ -53,8 +54,8 @@ export function MenuItemRow({
           {item.featured ? "Destacado" : "Normal"}
         </Badge>
       </TableCell>
-      <TableCell className="text-center tabular-nums">
-        {item.servesPeople ?? "—"}
+      <TableCell className="text-right tabular-nums">
+        {formatMenuItemPrice(item.price, item.currencyCode)}
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">

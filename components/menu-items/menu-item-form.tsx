@@ -21,13 +21,15 @@ import { FormSection } from "./form-section"
 import { InputField } from "./input-field"
 import { ToggleSwitch } from "./toggle-switch"
 import { ImageUploader } from "./image-uploader"
-import type { MenuItem } from "./types"
 import {
   createAdminMenuItem,
+  fetchAdminMenuCategoriesOptions,
   fetchAdminMenuItemById,
-  fetchAdminMenuItems,
   patchAdminMenuItem,
+  type MenuCategoryOption,
 } from "@/lib/requests/menu-items"
+
+const DEFAULT_CURRENCY_CODE = "ARS"
 
 interface MenuItemFormData {
   name: string
@@ -36,15 +38,12 @@ interface MenuItemFormData {
   available: boolean
   featured: boolean
   servesPeople: string
+  price: string
+  currencyCode: string
   ingredients: string
   ingredientsNotes: string
   preparation: string
   imageUrl: string | null
-}
-
-interface ProductCategoryOption {
-  id: string
-  name: string
 }
 
 interface MenuItemFormProps {
@@ -59,6 +58,8 @@ const initialFormData: MenuItemFormData = {
   available: true,
   featured: false,
   servesPeople: "",
+  price: "",
+  currencyCode: DEFAULT_CURRENCY_CODE,
   ingredients: "",
   ingredientsNotes: "",
   preparation: "",
@@ -71,7 +72,7 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
   const [errors, setErrors] = useState<Partial<Record<keyof MenuItemFormData, string>>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [categories, setCategories] = useState<ProductCategoryOption[]>([])
+  const [categories, setCategories] = useState<MenuCategoryOption[]>([])
   const [imageUrlBlocked, setImageUrlBlocked] = useState(false)
 
   const handleImageBlockingChange = useCallback((blocked: boolean) => {
@@ -87,31 +88,14 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
     const load = async () => {
       setIsLoading(true)
       try {
-        const [itemsData, item] = await Promise.all([
-          fetchAdminMenuItems({
-            all: true,
-            includeUnavailable: true,
-          }),
+        const [categoriesData, item] = await Promise.all([
+          fetchAdminMenuCategoriesOptions(),
           mode === "edit" && itemId
             ? fetchAdminMenuItemById(itemId)
             : Promise.resolve(null),
         ])
 
-        const categoryMap = new Map<string, ProductCategoryOption>()
-        for (const x of itemsData.items) {
-          const id = x.categoryId ?? ""
-          const name = x.categoryName ?? ""
-          if (id && name && !categoryMap.has(id)) {
-            categoryMap.set(id, { id, name })
-          }
-        }
-        if (item?.categoryId && item.categoryName && !categoryMap.has(item.categoryId)) {
-          categoryMap.set(item.categoryId, {
-            id: item.categoryId,
-            name: item.categoryName,
-          })
-        }
-        setCategories(Array.from(categoryMap.values()))
+        setCategories(categoriesData)
 
         if (item) {
           setFormData({
@@ -121,12 +105,14 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
             available: item.available,
             featured: item.featured,
             servesPeople: item.servesPeople?.toString() || "",
+            price: item.price != null ? String(item.price) : "",
+            currencyCode: item.currencyCode || DEFAULT_CURRENCY_CODE,
             ingredients: item.ingredients || "",
             ingredientsNotes: item.ingredientsNotes || "",
             preparation: item.preparation || "",
             imageUrl: item.imageUrl,
           })
-        }        
+        }
       } catch (e) {
         const msg = isAxiosError(e)
           ? (e.response?.data as { message?: string })?.message ?? e.message
@@ -160,6 +146,17 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
 
     if (!formData.categoryId) {
       newErrors.categoryId = "Selecciona una categoría"
+    } else {
+      const selectedCategory = categories.find((c) => c.id === formData.categoryId)
+      if (!selectedCategory?.tag?.trim()) {
+        newErrors.categoryId = "La categoría seleccionada no tiene sección asignada"
+      }
+    }
+
+    const priceValue = formData.price.trim().replace(",", ".")
+    const parsedPrice = priceValue === "" ? null : Number(priceValue)
+    if (parsedPrice == null || !Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      newErrors.price = "Ingresa un precio válido"
     }
 
     if (imageUrlBlocked) {
@@ -181,10 +178,16 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
     setIsSaving(true)
 
     try {
+      const selectedCategory = categories.find((c) => c.id === formData.categoryId)
+      const categoryTag = selectedCategory?.tag?.trim().toUpperCase() ?? null
+      const priceValue = Number(formData.price.trim().replace(",", "."))
+
       const payload = {
         name: formData.name.trim(),
         description: formData.description.trim() || null,
         categoryId: formData.categoryId,
+        categoryTag,
+        sectionId: categoryTag,
         isAvailable: formData.available,
         isFeatured: formData.featured,
         servesPeople: formData.servesPeople.trim()
@@ -193,7 +196,11 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
         ingredients: formData.ingredients.trim() || null,
         ingredientsNotes: formData.ingredientsNotes.trim() || null,
         preparation: formData.preparation.trim() || null,
-        imageUrl: formData.imageUrl,
+        image: formData.imageUrl,
+        price: {
+          amount: priceValue,
+          currencyCode: formData.currencyCode.trim() || DEFAULT_CURRENCY_CODE,
+        },
       }
 
       if (mode === "create") {
@@ -376,6 +383,26 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
               onChange={(value) => updateField("servesPeople", value)}
               type="number"
               disabled={isSaving}
+            />
+
+            <InputField
+              id="price"
+              label="Precio"
+              placeholder="Ej: 4500"
+              value={formData.price}
+              onChange={(value) => updateField("price", value)}
+              type="number"
+              required
+              error={errors.price}
+              disabled={isSaving}
+            />
+
+            <InputField
+              id="currencyCode"
+              label="Moneda"
+              value={formData.currencyCode}
+              onChange={(value) => updateField("currencyCode", value)}
+              disabled
             />
           </FormSection>
 

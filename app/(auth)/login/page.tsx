@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { isAxiosError } from "axios"
-import { LayoutDashboard } from "lucide-react"
+import { Eye, EyeOff, LayoutDashboard } from "lucide-react"
 
 import { getUserRoleFromToken, resolveAccessToken, setAuthCookie } from "@/lib/auth"
 import { resolvePostLoginDestination } from "@/lib/access-control"
@@ -39,6 +39,7 @@ type LoginFormValues = z.infer<typeof loginSchema>
 function LoginForm() {
   const router = useRouter()
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
   const emailInputRef = useRef<HTMLInputElement | null>(null)
   const passwordInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -148,21 +149,40 @@ function LoginForm() {
                   <FormItem>
                     <FormLabel>Contraseña</FormLabel>
                     <FormControl>
-                      <Input
-                        type="password"
-                        autoComplete="current-password"
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault()
-                            void form.handleSubmit(onSubmit, submitWithFallbackValues)()
+                      <div className="relative">
+                        <Input
+                          type={showPassword ? "text" : "password"}
+                          autoComplete="current-password"
+                          className="pr-10"
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault()
+                              void form.handleSubmit(onSubmit, submitWithFallbackValues)()
+                            }
+                          }}
+                          {...fieldProps}
+                          ref={(element) => {
+                            ref(element)
+                            passwordInputRef.current = element
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="absolute top-0 right-0 h-full px-3 text-muted-foreground hover:text-foreground"
+                          aria-label={
+                            showPassword ? "Ocultar contraseña" : "Mostrar contraseña"
                           }
-                        }}
-                        {...fieldProps}
-                        ref={(element) => {
-                          ref(element)
-                          passwordInputRef.current = element
-                        }}
-                      />
+                          onClick={() => setShowPassword((visible) => !visible)}
+                        >
+                          {showPassword ? (
+                            <EyeOff className="size-4" />
+                          ) : (
+                            <Eye className="size-4" />
+                          )}
+                        </Button>
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
