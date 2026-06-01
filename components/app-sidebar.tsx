@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 import {
   ShoppingCart,
   CalendarDays,
+  CalendarClock,
   LayoutDashboard,
   QrCode,
   Truck,
@@ -71,6 +72,12 @@ const navItems: {
     title: "Horarios",
     href: "/hours",
     icon: Clock3,
+    allowedRoles: ["ADMIN", "OWNER"],
+  },
+  {
+    title: "Slots de reserva",
+    href: "/reservation-slots",
+    icon: CalendarClock,
     allowedRoles: ["ADMIN", "OWNER"],
   },
   {
