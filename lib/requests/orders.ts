@@ -43,6 +43,10 @@ export interface AdminOrderItemRaw {
   menu_item_id: string
   quantity: number
   unit_price: string | number
+  /** Precio original antes del descuento; null si no había. */
+  list_price?: string | number | null
+  /** Descuento aplicado por unidad; null si no había. */
+  discount_amount?: string | number | null
   serves_people: number | null
   notes?: string | null
   menu_item?: AdminOrderMenuItemRaw | null
@@ -75,6 +79,10 @@ export interface AdminOrderRaw {
   payment_status?: string | null
   currency_code: string
   total_amount: string | number | null
+  /** Costo de envío; null si no es DELIVERY o no tiene zona configurada. */
+  delivery_fee?: string | number | null
+  /** Ajuste por método de pago; negativo = descuento, positivo = recargo. */
+  payment_adjustment?: string | number | null
   created_at: string
   customer_address_id: string | null
   delivery_address_snapshot: Record<string, unknown> | null
@@ -192,6 +200,8 @@ function mapLineItems(raw: AdminOrderRaw): OrderLineItem[] {
       name: oi.menu_item?.name?.trim() || "Producto sin nombre",
       quantity,
       unitPrice,
+      listPrice: parseDecimal(oi.list_price),
+      discountAmount: parseDecimal(oi.discount_amount),
       lineTotal,
       servesPeople: oi.serves_people,
       notes: oi.notes ?? null,
@@ -214,6 +224,8 @@ export function mapAdminOrderToOrder(raw: AdminOrderRaw): Order {
     paymentStatus: raw.payment_status ?? "unpaid",
     currencyCode: raw.currency_code,
     totalAmount: parseDecimal(raw.total_amount),
+    deliveryFee: parseDecimal(raw.delivery_fee),
+    paymentAdjustment: parseDecimal(raw.payment_adjustment),
     createdAt: new Date(raw.created_at),
     customerAddressId: raw.customer_address_id,
     deliveryAddressSnapshot: delivery,

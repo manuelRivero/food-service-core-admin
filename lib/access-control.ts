@@ -106,6 +106,10 @@ export function canAccessPath(role: UserRole, pathname: string): boolean {
     return role === "ADMIN" || role === "OWNER"
   }
 
+  if (pathname === "/payment-method-configs" || pathname.startsWith("/payment-method-configs/")) {
+    return role === "ADMIN" || role === "OWNER"
+  }
+
   return true
 }
 

@@ -19,7 +19,12 @@ export interface OrderLineItem {
   menuItemId: string
   name: string
   quantity: number
+  /** Precio final cobrado (con descuento aplicado si lo hay). */
   unitPrice: number
+  /** Precio original antes del descuento; null si no había descuento. */
+  listPrice: number | null
+  /** Descuento aplicado por unidad; null si no había. */
+  discountAmount: number | null
   /** Cantidad × unit_price (no está persistido como tal en BD). */
   lineTotal: number
   /** `order_item.serves_people` */
@@ -42,6 +47,10 @@ export interface Order {
   paymentStatus: string
   currencyCode: string
   totalAmount: number | null
+  /** Costo de envío; null si no es DELIVERY o no tiene zona configurada. */
+  deliveryFee: number | null
+  /** Ajuste por método de pago; negativo = descuento, positivo = recargo; null si no hay. */
+  paymentAdjustment: number | null
   createdAt: Date
   customerAddressId: string | null
   deliveryAddressSnapshot: DeliveryAddressSnapshot | null
@@ -112,7 +121,7 @@ function line(
   servesPeople?: number | null,
 ): OrderLineItem {
   const lineTotal = Math.round(quantity * unitPrice * 100) / 100
-  return { id, menuItemId, name, quantity, unitPrice, lineTotal, servesPeople }
+  return { id, menuItemId, name, quantity, unitPrice, listPrice: null, discountAmount: null, lineTotal, servesPeople }
 }
 
 const MOCK_BUSINESS_ID = "a0000000-0000-4000-8000-000000000001"
@@ -128,6 +137,8 @@ export const orders: Order[] = [
     paymentStatus: "paid",
     currencyCode: "ARS",
     totalAmount: 125.0,
+    deliveryFee: null,
+    paymentAdjustment: null,
     createdAt: new Date("2026-04-01T12:00:00.000Z"),
     customerAddressId: "ca000001-0000-4000-8000-000000000001",
     deliveryAddressSnapshot: {
@@ -185,6 +196,8 @@ export const orders: Order[] = [
     paymentStatus: "unpaid",
     currencyCode: "ARS",
     totalAmount: 89.5,
+    deliveryFee: null,
+    paymentAdjustment: null,
     createdAt: new Date("2026-04-02T14:30:00.000Z"),
     customerAddressId: null,
     deliveryAddressSnapshot: null,
@@ -204,6 +217,8 @@ export const orders: Order[] = [
     paymentStatus: "unpaid",
     currencyCode: "ARS",
     totalAmount: 245.0,
+    deliveryFee: null,
+    paymentAdjustment: null,
     createdAt: new Date("2026-04-03T20:15:00.000Z"),
     customerAddressId: "ca000003-0000-4000-8000-000000000003",
     deliveryAddressSnapshot: {
@@ -227,6 +242,8 @@ export const orders: Order[] = [
     paymentStatus: "paid",
     currencyCode: "ARS",
     totalAmount: 67.25,
+    deliveryFee: null,
+    paymentAdjustment: null,
     createdAt: new Date("2026-04-03T19:00:00.000Z"),
     customerAddressId: null,
     deliveryAddressSnapshot: null,
@@ -248,6 +265,8 @@ export const orders: Order[] = [
     paymentStatus: "unpaid",
     currencyCode: "ARS",
     totalAmount: 190.0,
+    deliveryFee: null,
+    paymentAdjustment: null,
     createdAt: new Date("2026-04-04T10:00:00.000Z"),
     customerAddressId: "ca000005-0000-4000-8000-000000000005",
     deliveryAddressSnapshot: {
@@ -272,6 +291,8 @@ export const orders: Order[] = [
     paymentStatus: "unpaid",
     currencyCode: "ARS",
     totalAmount: 312.5,
+    deliveryFee: null,
+    paymentAdjustment: null,
     createdAt: new Date("2026-04-04T21:45:00.000Z"),
     customerAddressId: null,
     deliveryAddressSnapshot: null,
@@ -291,6 +312,8 @@ export const orders: Order[] = [
     paymentStatus: "unpaid",
     currencyCode: "ARS",
     totalAmount: 78.0,
+    deliveryFee: null,
+    paymentAdjustment: null,
     createdAt: new Date("2026-04-05T13:20:00.000Z"),
     customerAddressId: null,
     deliveryAddressSnapshot: null,
@@ -311,6 +334,8 @@ export const orders: Order[] = [
     paymentStatus: "paid",
     currencyCode: "ARS",
     totalAmount: 156.75,
+    deliveryFee: null,
+    paymentAdjustment: null,
     createdAt: new Date("2026-04-05T22:00:00.000Z"),
     customerAddressId: "ca000008-0000-4000-8000-000000000008",
     deliveryAddressSnapshot: {

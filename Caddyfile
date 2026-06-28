@@ -1,0 +1,6 @@
+# El dominio se toma de la variable de entorno DOMAIN (definida en .env).
+# Caddy gestiona HTTPS automáticamente con Let's Encrypt.
+{$DOMAIN} {
+	encode gzip zstd
+	reverse_proxy app:3000
+}

@@ -357,10 +357,20 @@ export function OrdersTable({
                             <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
                               {item.servesPeople != null ? item.servesPeople : "—"}
                             </TableCell>
-                            <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
-                              {formatMoney(
-                                item.unitPrice,
-                                selectedOrder.currencyCode,
+                            <TableCell className="text-right text-sm tabular-nums">
+                              {item.listPrice != null ? (
+                                <div className="flex flex-col items-end gap-0.5">
+                                  <span className="text-muted-foreground line-through text-xs">
+                                    {formatMoney(item.listPrice, selectedOrder.currencyCode)}
+                                  </span>
+                                  <span className="text-green-700 dark:text-green-400 font-medium">
+                                    {formatMoney(item.unitPrice, selectedOrder.currencyCode)}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">
+                                  {formatMoney(item.unitPrice, selectedOrder.currencyCode)}
+                                </span>
                               )}
                             </TableCell>
                             <TableCell className="text-right text-sm font-medium tabular-nums">
@@ -376,6 +386,64 @@ export function OrdersTable({
                   </div>
                 )}
               </div>
+
+              {(() => {
+                const { deliveryFee, paymentAdjustment, totalAmount, currencyCode, items } = selectedOrder
+                const subtotal = items.reduce((sum, it) => sum + it.lineTotal, 0)
+                const totalItemDiscount = items.reduce((sum, it) => {
+                  if (it.listPrice != null && it.discountAmount != null) {
+                    return sum + it.discountAmount * it.quantity
+                  }
+                  return sum
+                }, 0)
+                const hasBreakdown =
+                  totalItemDiscount > 0 ||
+                  deliveryFee != null ||
+                  paymentAdjustment != null
+
+                if (!hasBreakdown) return null
+
+                return (
+                  <>
+                    <Separator />
+                    <div className="space-y-1.5 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Subtotal productos</span>
+                        <span className="tabular-nums">{formatMoney(subtotal, currencyCode)}</span>
+                      </div>
+                      {totalItemDiscount > 0 && (
+                        <div className="flex justify-between text-green-700 dark:text-green-400">
+                          <span>Descuentos en ítems</span>
+                          <span className="tabular-nums">−{formatMoney(totalItemDiscount, currencyCode)}</span>
+                        </div>
+                      )}
+                      {deliveryFee != null && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Envío</span>
+                          <span className="tabular-nums">+{formatMoney(deliveryFee, currencyCode)}</span>
+                        </div>
+                      )}
+                      {paymentAdjustment != null && (
+                        <div className={`flex justify-between ${paymentAdjustment < 0 ? "text-green-700 dark:text-green-400" : "text-orange-600 dark:text-orange-400"}`}>
+                          <span>
+                            {paymentAdjustment < 0 ? "Descuento efectivo" : "Recargo online"}
+                          </span>
+                          <span className="tabular-nums">
+                            {paymentAdjustment < 0
+                              ? `−${formatMoney(Math.abs(paymentAdjustment), currencyCode)}`
+                              : `+${formatMoney(paymentAdjustment, currencyCode)}`}
+                          </span>
+                        </div>
+                      )}
+                      <Separator className="my-1" />
+                      <div className="flex justify-between font-medium">
+                        <span>Total</span>
+                        <span className="tabular-nums">{formatMoney(totalAmount, currencyCode)}</span>
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
 
               {(() => {
                 const next = getNextPatchableOrderStatus(selectedOrder.status)

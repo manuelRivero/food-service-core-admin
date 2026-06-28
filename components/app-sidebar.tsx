@@ -18,6 +18,7 @@ import {
   Clock3,
   Building2,
   CreditCard,
+  BadgePercent,
 } from "lucide-react"
 
 import {
@@ -109,6 +110,12 @@ const navItems: {
     title: "Pagos online",
     href: "/online-payments",
     icon: CreditCard,
+    allowedRoles: ["ADMIN", "OWNER"],
+  },
+  {
+    title: "Ajustes de pago",
+    href: "/payment-method-configs",
+    icon: BadgePercent,
     allowedRoles: ["ADMIN", "OWNER"],
   },
   {

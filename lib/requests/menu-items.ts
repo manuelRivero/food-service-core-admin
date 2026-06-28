@@ -1,5 +1,5 @@
 import { api } from "@/lib/api"
-import type { MenuItem } from "@/components/menu-items/types"
+import type { MenuItem, MenuItemDiscount } from "@/components/menu-items/types"
 
 export const ADMIN_MENU_ITEMS_PATH = "/admin/menu-items"
 export const ADMIN_MENU_CATEGORIES_OPTIONS_PATH = "/admin/menu-categories/options"
@@ -35,6 +35,8 @@ export interface UpsertAdminMenuItemInput {
   ingredientsNotes?: string | null
   preparation?: string | null
   price?: UpsertAdminMenuItemPriceInput | null
+  /** `null` elimina el descuento; omitir el campo deja el descuento existente intacto (PATCH). */
+  discount?: MenuItemDiscount | null
 }
 
 interface AdminMenuCategoryRaw {
@@ -50,6 +52,13 @@ interface AdminMenuItemPriceRaw {
   currencyCode?: string
   currency_code?: string
   amount?: string | number | null
+}
+
+interface AdminMenuItemDiscountRaw {
+  discountType?: string | null
+  discount_type?: string | null
+  discountValue?: string | number | null
+  discount_value?: string | number | null
 }
 
 interface AdminMenuItemRaw {
@@ -87,6 +96,7 @@ interface AdminMenuItemRaw {
   price?: AdminMenuItemPriceRaw | string | number | null
   created_at?: string | null
   createdAt?: string | null
+  discount?: AdminMenuItemDiscountRaw | null
 }
 
 interface AdminMenuItemsListResponseRaw {
@@ -172,6 +182,18 @@ function parseDecimal(v: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+function resolveMenuItemDiscount(
+  raw: AdminMenuItemRaw,
+): MenuItemDiscount | null {
+  const d = raw.discount
+  if (!d || typeof d !== "object") return null
+  const rawType = d.discountType ?? d.discount_type
+  if (rawType !== "PERCENT" && rawType !== "FIXED") return null
+  const rawValue = parseDecimal(d.discountValue ?? d.discount_value)
+  if (rawValue == null) return null
+  return { discountType: rawType, discountValue: rawValue }
+}
+
 function resolveMenuItemPrice(raw: AdminMenuItemRaw): {
   price: number | null
   currencyCode: string | null
@@ -229,7 +251,7 @@ function mapAdminMenuItem(raw: AdminMenuItemRaw): MenuItem {
     ...resolveMenuItemPrice(raw),
     servesPeople:
       typeof (raw.servesPeople ?? raw.serves_people) === "number"
-        ? (raw.servesPeople ?? raw.serves_people)
+        ? (raw.servesPeople ?? raw.serves_people ?? null)
         : null,
     ingredients: toStringOrNull(raw.ingredients),
     ingredientsNotes: toStringOrNull(
@@ -237,6 +259,7 @@ function mapAdminMenuItem(raw: AdminMenuItemRaw): MenuItem {
     ),
     preparation: toStringOrNull(raw.preparation),
     createdAt: Number.isNaN(createdAt.getTime()) ? new Date() : createdAt,
+    discount: resolveMenuItemDiscount(raw),
   }
 }
 
@@ -352,6 +375,7 @@ function toApiPayload(input: UpsertAdminMenuItemInput): Record<string, unknown> 
       ? { ingredientsNotes: input.ingredientsNotes }
       : {}),
     ...(input.price != null ? { price: input.price } : {}),
+    ...("discount" in input ? { discount: input.discount ?? null } : {}),
   }
 }
 

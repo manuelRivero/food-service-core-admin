@@ -55,7 +55,16 @@ export function MenuItemRow({
         </Badge>
       </TableCell>
       <TableCell className="text-right tabular-nums">
-        {formatMenuItemPrice(item.price, item.currencyCode)}
+        <div className="flex flex-col items-end gap-1">
+          {formatMenuItemPrice(item.price, item.currencyCode)}
+          {item.discount && (
+            <Badge variant="secondary" className="text-[10px] font-medium text-green-700 dark:text-green-400">
+              {item.discount.discountType === "PERCENT"
+                ? `${item.discount.discountValue}% Descuento`
+                : `$${item.discount.discountValue} Descuento`}
+            </Badge>
+          )}
+        </div>
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">

@@ -31,6 +31,11 @@ export function formatMenuCategoryTag(tag: string | null | undefined): string {
   return MENU_CATEGORY_TAG_LABELS[tag.toUpperCase()] ?? tag
 }
 
+export interface MenuItemDiscount {
+  discountType: "PERCENT" | "FIXED"
+  discountValue: number
+}
+
 export interface MenuItem {
   id: string
   name: string
@@ -50,4 +55,5 @@ export interface MenuItem {
   ingredientsNotes: string | null
   preparation: string | null
   createdAt: Date
+  discount: MenuItemDiscount | null
 }

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Input } from "@/components/ui/input"
 import { SettingsFormFooter } from "@/components/settings/settings-form-footer"
 import { FormSection } from "./form-section"
 import { InputField } from "./input-field"
@@ -59,6 +60,9 @@ interface MenuItemFormData {
   ingredientsNotes: string
   preparation: string
   imageUrl: string | null
+  discountEnabled: boolean
+  discountType: "PERCENT" | "FIXED"
+  discountValue: string
 }
 
 interface MenuItemFormProps {
@@ -79,6 +83,9 @@ const initialFormData: MenuItemFormData = {
   ingredientsNotes: "",
   preparation: "",
   imageUrl: null,
+  discountEnabled: false,
+  discountType: "PERCENT",
+  discountValue: "",
 }
 
 function normalizeFormData(data: MenuItemFormData) {
@@ -95,6 +102,9 @@ function normalizeFormData(data: MenuItemFormData) {
     ingredientsNotes: data.ingredientsNotes.trim(),
     preparation: data.preparation.trim(),
     imageUrl: data.imageUrl,
+    discountEnabled: data.discountEnabled,
+    discountType: data.discountType,
+    discountValue: data.discountValue.trim().replace(",", "."),
   }
 }
 
@@ -113,7 +123,10 @@ function isFormDataEqual(a: MenuItemFormData, b: MenuItemFormData): boolean {
     left.ingredients === right.ingredients &&
     left.ingredientsNotes === right.ingredientsNotes &&
     left.preparation === right.preparation &&
-    left.imageUrl === right.imageUrl
+    left.imageUrl === right.imageUrl &&
+    left.discountEnabled === right.discountEnabled &&
+    left.discountType === right.discountType &&
+    left.discountValue === right.discountValue
   )
 }
 
@@ -122,7 +135,7 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
   const [formData, setFormData] = useState<MenuItemFormData>(initialFormData)
   const [initialFormDataState, setInitialFormDataState] =
     useState<MenuItemFormData | null>(null)
-  const [errors, setErrors] = useState<Partial<Record<keyof MenuItemFormData, string>>>({})
+  const [errors, setErrors] = useState<Partial<Record<keyof MenuItemFormData | "discountValue", string>>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [categories, setCategories] = useState<MenuCategoryOption[]>([])
@@ -202,6 +215,9 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
             ingredientsNotes: item.ingredientsNotes || "",
             preparation: item.preparation || "",
             imageUrl: item.imageUrl,
+            discountEnabled: item.discount != null,
+            discountType: item.discount?.discountType ?? "PERCENT",
+            discountValue: item.discount ? String(item.discount.discountValue) : "",
           }
           setFormData(loadedFormData)
           if (mode === "edit") {
@@ -268,6 +284,15 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
       newErrors.imageUrl = "Revisa la URL de la imagen"
     }
 
+    if (formData.discountEnabled) {
+      const dv = Number(formData.discountValue.trim().replace(",", "."))
+      if (!formData.discountValue.trim() || !Number.isFinite(dv) || dv <= 0) {
+        newErrors.discountValue = "Ingresa un valor de descuento válido"
+      } else if (formData.discountType === "PERCENT" && dv > 100) {
+        newErrors.discountValue = "El porcentaje de descuento no puede superar el 100%"
+      }
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -290,6 +315,13 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
     try {
       const priceValue = Number(formData.price.trim().replace(",", "."))
 
+      const discountPayload = formData.discountEnabled
+        ? {
+            discountType: formData.discountType,
+            discountValue: Number(formData.discountValue.trim().replace(",", ".")),
+          }
+        : null
+
       const payload = {
         name: formData.name.trim(),
         description: formData.description.trim() || null,
@@ -307,6 +339,7 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
           amount: priceValue,
           currencyCode: formData.currencyCode.trim() || DEFAULT_CURRENCY_CODE,
         },
+        discount: discountPayload,
       }
 
       let savedId: string
@@ -599,6 +632,79 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
               onChange={(value) => updateField("currencyCode", value)}
               disabled
             />
+          </FormSection>
+
+          {/* Discount */}
+          <FormSection
+            title="Descuento"
+            description="Aplica un descuento sobre el precio del producto"
+          >
+            <ToggleSwitch
+              id="discountEnabled"
+              label="Activar descuento"
+              description="Aplica un descuento visible en el menú"
+              checked={formData.discountEnabled}
+              onCheckedChange={(checked) => {
+                updateField("discountEnabled", checked)
+                if (!checked) {
+                  setErrors((prev) => ({ ...prev, discountValue: undefined }))
+                }
+              }}
+              disabled={isSaving}
+            />
+            <div className={`flex flex-col gap-3 ${formData.discountEnabled ? "" : "opacity-50 pointer-events-none"}`}>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="discountType">Tipo de descuento</Label>
+                <Select
+                  value={formData.discountType}
+                  onValueChange={(value) =>
+                    updateField("discountType", value as "PERCENT" | "FIXED")
+                  }
+                  disabled={isSaving || !formData.discountEnabled}
+                >
+                  <SelectTrigger id="discountType">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PERCENT">Porcentaje (%)</SelectItem>
+                    <SelectItem value="FIXED">Monto fijo ($)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label
+                  htmlFor="discountValue"
+                  className={errors.discountValue ? "text-destructive" : ""}
+                >
+                  {formData.discountType === "PERCENT"
+                    ? "Porcentaje (0–100)"
+                    : "Monto fijo"}
+                </Label>
+                <Input
+                  id="discountValue"
+                  type="number"
+                  min={0}
+                  max={formData.discountType === "PERCENT" ? 100 : undefined}
+                  step="any"
+                  placeholder={
+                    formData.discountType === "PERCENT" ? "Ej: 15" : "Ej: 500"
+                  }
+                  value={formData.discountValue}
+                  onChange={(e) => {
+                    updateField("discountValue", e.target.value)
+                    setErrors((prev) => ({ ...prev, discountValue: undefined }))
+                  }}
+                  disabled={isSaving || !formData.discountEnabled}
+                  aria-invalid={!!errors.discountValue}
+                  className={errors.discountValue ? "border-destructive" : ""}
+                />
+                {errors.discountValue && (
+                  <p className="text-sm text-destructive">
+                    {errors.discountValue}
+                  </p>
+                )}
+              </div>
+            </div>
           </FormSection>
 
           {/* Image */}
