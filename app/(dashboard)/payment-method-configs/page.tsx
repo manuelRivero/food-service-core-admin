@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -56,6 +57,7 @@ import {
   type UpdatePaymentMethodConfigPayload,
   createPaymentMethodConfig,
   deletePaymentMethodConfig,
+  emptyToNull,
   fetchPaymentMethodConfigs,
   updatePaymentMethodConfig,
 } from "@/lib/requests/payment-method-configs"
@@ -74,6 +76,10 @@ interface FormState {
   adjustmentValue: string
   isSurcharge: boolean
   isActive: boolean
+  instructions: string
+  bankAlias: string
+  bankCbu: string
+  bankHolder: string
 }
 
 const emptyForm: FormState = {
@@ -83,6 +89,14 @@ const emptyForm: FormState = {
   adjustmentValue: "",
   isSurcharge: false,
   isActive: true,
+  instructions: "",
+  bankAlias: "",
+  bankCbu: "",
+  bankHolder: "",
+}
+
+function isTransferMethod(paymentMethod: string): boolean {
+  return paymentMethod.trim().toLowerCase() === "transfer"
 }
 
 interface FormErrors {
@@ -165,6 +179,10 @@ export default function PaymentMethodConfigsPage() {
       adjustmentValue: String(config.adjustmentValue),
       isSurcharge: config.isSurcharge,
       isActive: config.isActive,
+      instructions: config.instructions ?? "",
+      bankAlias: config.bankAlias ?? "",
+      bankCbu: config.bankCbu ?? "",
+      bankHolder: config.bankHolder ?? "",
     })
     setFormErrors({})
     setDialogOpen(true)
@@ -186,26 +204,37 @@ export default function PaymentMethodConfigsPage() {
     setIsSaving(true)
     try {
       const adjustmentValue = Number(form.adjustmentValue.trim().replace(",", "."))
+      const paymentMethod = form.paymentMethod.trim()
+      const transfer = isTransferMethod(paymentMethod)
+      const bankFields = {
+        bankAlias: transfer ? emptyToNull(form.bankAlias) : null,
+        bankCbu: transfer ? emptyToNull(form.bankCbu) : null,
+        bankHolder: transfer ? emptyToNull(form.bankHolder) : null,
+      }
       if (editingConfig) {
         const payload: UpdatePaymentMethodConfigPayload = {
-          paymentMethod: form.paymentMethod.trim(),
+          paymentMethod,
           label: form.label.trim(),
           adjustmentType: form.adjustmentType,
           adjustmentValue,
           isSurcharge: form.isSurcharge,
           isActive: form.isActive,
+          instructions: emptyToNull(form.instructions),
+          ...bankFields,
         }
         const updated = await updatePaymentMethodConfig(editingConfig.id, payload)
         setConfigs((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
         toast.success("Configuración actualizada")
       } else {
         const payload: CreatePaymentMethodConfigPayload = {
-          paymentMethod: form.paymentMethod.trim(),
+          paymentMethod,
           label: form.label.trim(),
           adjustmentType: form.adjustmentType,
           adjustmentValue,
           isSurcharge: form.isSurcharge,
           isActive: form.isActive,
+          instructions: emptyToNull(form.instructions),
+          ...(transfer ? bankFields : {}),
         }
         const created = await createPaymentMethodConfig(payload)
         setConfigs((prev) => [...prev, created])
@@ -331,6 +360,23 @@ export default function PaymentMethodConfigsPage() {
                       {formatAdjustment(config)}
                     </span>
                   </p>
+                  {isTransferMethod(config.paymentMethod) &&
+                    (config.bankAlias || config.bankCbu || config.bankHolder) && (
+                      <p className="text-xs text-muted-foreground truncate">
+                        {[
+                          config.bankAlias ? `Alias: ${config.bankAlias}` : null,
+                          config.bankCbu ? `CBU: ${config.bankCbu}` : null,
+                          config.bankHolder ? config.bankHolder : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    )}
+                  {config.instructions && (
+                    <p className="text-xs text-muted-foreground line-clamp-2">
+                      {config.instructions}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Switch
@@ -366,7 +412,7 @@ export default function PaymentMethodConfigsPage() {
 
       {/* Create / Edit dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingConfig ? "Editar ajuste" : "Nuevo ajuste de pago"}
@@ -479,6 +525,69 @@ export default function PaymentMethodConfigsPage() {
             </div>
             {formErrors.adjustmentValue && (
               <p className="text-sm text-destructive -mt-2">{formErrors.adjustmentValue}</p>
+            )}
+
+            {/* instructions */}
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="instructions">Instrucciones para el cliente</Label>
+              <Textarea
+                id="instructions"
+                placeholder="Ej: Transferí al alias LOCAL.COMIDA y mandame el comprobante por este chat."
+                value={form.instructions}
+                onChange={(e) => updateFormField("instructions", e.target.value)}
+                disabled={isSaving}
+                maxLength={2000}
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                Texto libre que ve el cliente al elegir este método. Vacío lo limpia.
+              </p>
+            </div>
+
+            {/* Datos bancarios — solo transferencia */}
+            {isTransferMethod(form.paymentMethod) && (
+              <>
+                <Separator />
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-medium">Datos bancarios</p>
+                  <p className="text-xs text-muted-foreground">
+                    Se usan para validar el comprobante (alias y CBU/CVU). El titular es solo informativo.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="bankAlias">Alias</Label>
+                  <Input
+                    id="bankAlias"
+                    placeholder="Ej: local.comida"
+                    value={form.bankAlias}
+                    onChange={(e) => updateFormField("bankAlias", e.target.value)}
+                    disabled={isSaving}
+                    maxLength={255}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="bankCbu">CBU / CVU</Label>
+                  <Input
+                    id="bankCbu"
+                    placeholder="Ej: 0000003100010000000001"
+                    value={form.bankCbu}
+                    onChange={(e) => updateFormField("bankCbu", e.target.value)}
+                    disabled={isSaving}
+                    maxLength={50}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="bankHolder">Titular de la cuenta</Label>
+                  <Input
+                    id="bankHolder"
+                    placeholder="Ej: Mi Local SRL"
+                    value={form.bankHolder}
+                    onChange={(e) => updateFormField("bankHolder", e.target.value)}
+                    disabled={isSaving}
+                    maxLength={255}
+                  />
+                </div>
+              </>
             )}
 
             <Separator />

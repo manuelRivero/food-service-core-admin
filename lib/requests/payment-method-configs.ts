@@ -10,9 +10,17 @@ export interface AdminPaymentMethodConfig {
   adjustmentValue: number
   isSurcharge: boolean
   isActive: boolean
+  instructions: string | null
+  sortOrder: number
+  bankAlias: string | null
+  bankCbu: string | null
+  bankHolder: string | null
   createdAt: string
   updatedAt: string
 }
+
+/** Vacío o `null` limpia el campo en el backend. */
+export type NullableStringField = string | null
 
 export interface CreatePaymentMethodConfigPayload {
   paymentMethod: string
@@ -21,6 +29,11 @@ export interface CreatePaymentMethodConfigPayload {
   adjustmentValue: number
   isSurcharge: boolean
   isActive?: boolean
+  instructions?: NullableStringField
+  sortOrder?: number
+  bankAlias?: NullableStringField
+  bankCbu?: NullableStringField
+  bankHolder?: NullableStringField
 }
 
 export interface UpdatePaymentMethodConfigPayload {
@@ -30,6 +43,11 @@ export interface UpdatePaymentMethodConfigPayload {
   adjustmentValue?: number
   isSurcharge?: boolean
   isActive?: boolean
+  instructions?: NullableStringField
+  sortOrder?: number
+  bankAlias?: NullableStringField
+  bankCbu?: NullableStringField
+  bankHolder?: NullableStringField
 }
 
 interface AdminPaymentMethodConfigRaw {
@@ -45,6 +63,15 @@ interface AdminPaymentMethodConfigRaw {
   is_surcharge?: boolean | null
   isActive?: boolean | null
   is_active?: boolean | null
+  instructions?: string | null
+  sortOrder?: number | null
+  sort_order?: number | null
+  bankAlias?: string | null
+  bank_alias?: string | null
+  bankCbu?: string | null
+  bank_cbu?: string | null
+  bankHolder?: string | null
+  bank_holder?: string | null
   createdAt?: string | null
   created_at?: string | null
   updatedAt?: string | null
@@ -63,10 +90,17 @@ function toBoolean(v: unknown, fallback = false): boolean {
   return fallback
 }
 
+function toStringOrNull(v: unknown): string | null {
+  if (v == null) return null
+  if (typeof v !== "string") return null
+  return v === "" ? null : v
+}
+
 function mapConfig(raw: AdminPaymentMethodConfigRaw): AdminPaymentMethodConfig {
   const rawType = raw.adjustmentType ?? raw.adjustment_type ?? ""
   const adjustmentType: "PERCENT" | "FIXED" =
     rawType === "PERCENT" || rawType === "FIXED" ? rawType : "PERCENT"
+  const sortRaw = raw.sortOrder ?? raw.sort_order
 
   return {
     id: String(raw.id ?? ""),
@@ -76,17 +110,38 @@ function mapConfig(raw: AdminPaymentMethodConfigRaw): AdminPaymentMethodConfig {
     adjustmentValue: parseDecimal(raw.adjustmentValue ?? raw.adjustment_value),
     isSurcharge: toBoolean(raw.isSurcharge ?? raw.is_surcharge, false),
     isActive: toBoolean(raw.isActive ?? raw.is_active, true),
+    instructions: toStringOrNull(raw.instructions),
+    sortOrder: typeof sortRaw === "number" && Number.isFinite(sortRaw) ? sortRaw : 0,
+    bankAlias: toStringOrNull(raw.bankAlias ?? raw.bank_alias),
+    bankCbu: toStringOrNull(raw.bankCbu ?? raw.bank_cbu),
+    bankHolder: toStringOrNull(raw.bankHolder ?? raw.bank_holder),
     createdAt: String(raw.createdAt ?? raw.created_at ?? ""),
     updatedAt: String(raw.updatedAt ?? raw.updated_at ?? ""),
   }
 }
 
+type FetchResponse =
+  | AdminPaymentMethodConfigRaw[]
+  | {
+      configs?: AdminPaymentMethodConfigRaw[]
+      items?: AdminPaymentMethodConfigRaw[]
+      catalog?: unknown
+    }
+
+function extractConfigList(data: FetchResponse): AdminPaymentMethodConfigRaw[] {
+  if (Array.isArray(data)) return data
+  return data.configs ?? data.items ?? []
+}
+
+/** Vacío → `null` (limpia en el backend). */
+export function emptyToNull(value: string): string | null {
+  const t = value.trim()
+  return t === "" ? null : t
+}
+
 export async function fetchPaymentMethodConfigs(): Promise<AdminPaymentMethodConfig[]> {
-  const { data } = await api.get<AdminPaymentMethodConfigRaw[] | { items?: AdminPaymentMethodConfigRaw[] }>(
-    ADMIN_PAYMENT_METHOD_CONFIGS_PATH,
-  )
-  const list = Array.isArray(data) ? data : (data as { items?: AdminPaymentMethodConfigRaw[] }).items ?? []
-  return list.map(mapConfig)
+  const { data } = await api.get<FetchResponse>(ADMIN_PAYMENT_METHOD_CONFIGS_PATH)
+  return extractConfigList(data ?? []).map(mapConfig)
 }
 
 export async function createPaymentMethodConfig(
