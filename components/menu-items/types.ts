@@ -57,6 +57,8 @@ export interface MenuItem {
   ingredients: string | null
   ingredientsNotes: string | null
   preparation: string | null
+  /** Lista de variaciones del producto; `null` cuando no tiene. Nunca `[]` desde la API. */
+  variations: string[] | null
   createdAt: Date
   discount: MenuItemDiscount | null
 }

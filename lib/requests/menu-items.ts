@@ -37,6 +37,11 @@ export interface UpsertAdminMenuItemInput {
   price?: UpsertAdminMenuItemPriceInput | null
   /** `null` elimina el descuento; omitir el campo deja el descuento existente intacto (PATCH). */
   discount?: MenuItemDiscount | null
+  /**
+   * Lista completa de variaciones (reemplazo, no merge).
+   * `null` | `[]` limpia; omitir el campo no toca el valor existente (PATCH).
+   */
+  variations?: string[] | null
 }
 
 interface AdminMenuCategoryRaw {
@@ -99,6 +104,7 @@ interface AdminMenuItemRaw {
   created_at?: string | null
   createdAt?: string | null
   discount?: AdminMenuItemDiscountRaw | null
+  variations?: string[] | null
 }
 
 interface AdminMenuItemsListResponseRaw {
@@ -196,6 +202,19 @@ function resolveMenuItemDiscount(
   return { discountType: rawType, discountValue: rawValue }
 }
 
+/** La API normaliza sin variaciones a `null` (nunca `[]`). */
+function resolveMenuItemVariations(
+  raw: AdminMenuItemRaw,
+): string[] | null {
+  const v = raw.variations
+  if (!Array.isArray(v) || v.length === 0) return null
+  const items = v
+    .filter((x): x is string => typeof x === "string")
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0)
+  return items.length > 0 ? items : null
+}
+
 function resolveMenuItemPrice(raw: AdminMenuItemRaw): {
   price: number | null
   currencyCode: string | null
@@ -264,6 +283,7 @@ function mapAdminMenuItem(raw: AdminMenuItemRaw): MenuItem {
       raw.ingredientsNotes ?? raw.ingredients_notes,
     ),
     preparation: toStringOrNull(raw.preparation),
+    variations: resolveMenuItemVariations(raw),
     createdAt: Number.isNaN(createdAt.getTime()) ? new Date() : createdAt,
     discount: resolveMenuItemDiscount(raw),
   }
@@ -381,6 +401,14 @@ function toApiPayload(input: UpsertAdminMenuItemInput): Record<string, unknown> 
       : {}),
     ...(input.price != null ? { price: input.price } : {}),
     ...("discount" in input ? { discount: input.discount ?? null } : {}),
+    ...("variations" in input
+      ? {
+          variations:
+            input.variations == null || input.variations.length === 0
+              ? null
+              : input.variations,
+        }
+      : {}),
   }
 }
 

@@ -129,6 +129,20 @@ export function MenuItemDetailsModal({
               <p className="text-sm text-muted-foreground">Fecha de creación</p>
               <p className="mt-1 font-medium">{formatDate(item.createdAt)}</p>
             </div>
+            <div className="col-span-2">
+              <p className="text-sm text-muted-foreground">Variaciones</p>
+              {item.variations && item.variations.length > 0 ? (
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {item.variations.map((variation) => (
+                    <Badge key={variation} variant="secondary" className="font-normal">
+                      {variation}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 text-sm">Sin variaciones</p>
+              )}
+            </div>
           </div>
 
           {/* Ingredients Section */}

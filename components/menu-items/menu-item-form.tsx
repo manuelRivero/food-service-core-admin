@@ -40,6 +40,11 @@ import {
 import { AiEnrichmentModal } from "./ai-enrichment-modal"
 import { AiMetadataStatusTag } from "./ai-metadata-status-tag"
 import { ConfirmAiGenerationDialog } from "./confirm-ai-generation-dialog"
+import {
+  VariationsInput,
+  VARIATIONS_MAX_COUNT,
+  VARIATIONS_MAX_LENGTH,
+} from "./variations-input"
 
 const DEFAULT_CURRENCY_CODE = "ARS"
 
@@ -61,6 +66,7 @@ interface MenuItemFormData {
   ingredients: string
   ingredientsNotes: string
   preparation: string
+  variations: string[]
   image: ImageUploaderValue
   discountEnabled: boolean
   discountType: "PERCENT" | "FIXED"
@@ -84,10 +90,15 @@ const initialFormData: MenuItemFormData = {
   ingredients: "",
   ingredientsNotes: "",
   preparation: "",
+  variations: [],
   image: emptyImageUploaderValue(null),
   discountEnabled: false,
   discountType: "PERCENT",
   discountValue: "",
+}
+
+function normalizeVariations(variations: string[]): string[] {
+  return variations.map((v) => v.trim()).filter((v) => v.length > 0)
 }
 
 function normalizeFormData(data: MenuItemFormData) {
@@ -103,6 +114,7 @@ function normalizeFormData(data: MenuItemFormData) {
     ingredients: data.ingredients.trim(),
     ingredientsNotes: data.ingredientsNotes.trim(),
     preparation: data.preparation.trim(),
+    variations: normalizeVariations(data.variations),
     imagePreviewUrl: data.image.previewUrl,
     imageFileName: data.image.file?.name ?? null,
     imageRemoved: data.image.removed,
@@ -110,6 +122,11 @@ function normalizeFormData(data: MenuItemFormData) {
     discountType: data.discountType,
     discountValue: data.discountValue.trim().replace(",", "."),
   }
+}
+
+function variationsEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((v, i) => v === b[i])
 }
 
 function isFormDataEqual(a: MenuItemFormData, b: MenuItemFormData): boolean {
@@ -127,6 +144,7 @@ function isFormDataEqual(a: MenuItemFormData, b: MenuItemFormData): boolean {
     left.ingredients === right.ingredients &&
     left.ingredientsNotes === right.ingredientsNotes &&
     left.preparation === right.preparation &&
+    variationsEqual(left.variations, right.variations) &&
     left.imagePreviewUrl === right.imagePreviewUrl &&
     left.imageFileName === right.imageFileName &&
     left.imageRemoved === right.imageRemoved &&
@@ -220,6 +238,7 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
             ingredients: item.ingredients || "",
             ingredientsNotes: item.ingredientsNotes || "",
             preparation: item.preparation || "",
+            variations: item.variations ?? [],
             image: emptyImageUploaderValue(item.imageUrl),
             discountEnabled: item.discount != null,
             discountType: item.discount?.discountType ?? "PERCENT",
@@ -299,6 +318,16 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
       }
     }
 
+    const variations = normalizeVariations(formData.variations)
+    if (variations.length > VARIATIONS_MAX_COUNT) {
+      newErrors.variations = `Podés agregar como máximo ${VARIATIONS_MAX_COUNT} variaciones`
+    } else {
+      const tooLong = variations.find((v) => v.length > VARIATIONS_MAX_LENGTH)
+      if (tooLong) {
+        newErrors.variations = `Cada variación puede tener como máximo ${VARIATIONS_MAX_LENGTH} caracteres`
+      }
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -328,6 +357,8 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
           }
         : null
 
+      const variations = normalizeVariations(formData.variations)
+
       const payload = {
         name: formData.name.trim(),
         description: formData.description.trim() || null,
@@ -340,6 +371,7 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
         ingredients: formData.ingredients.trim() || null,
         ingredientsNotes: formData.ingredientsNotes.trim() || null,
         preparation: formData.preparation.trim() || null,
+        variations: variations.length > 0 ? variations : null,
         price: {
           amount: priceValue,
           currencyCode: formData.currencyCode.trim() || DEFAULT_CURRENCY_CODE,
@@ -578,7 +610,7 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
           {/* Content Details */}
           <FormSection
             title="Detalles del producto"
-            description="Ingredientes, notas y preparación"
+            description="Ingredientes, notas, preparación y variaciones"
           >
             <InputField
               id="ingredients"
@@ -611,6 +643,13 @@ export function MenuItemForm({ mode, itemId }: MenuItemFormProps) {
               type="textarea"
               rows={4}
               disabled={isSaving}
+            />
+
+            <VariationsInput
+              value={formData.variations}
+              onChange={(variations) => updateField("variations", variations)}
+              disabled={isSaving}
+              error={errors.variations}
             />
           </FormSection>
         </div>
