@@ -1,5 +1,6 @@
 export * from "./login"
 export * from "./orders"
+export * from "./payment-proofs"
 export * from "./reservations"
 export * from "./messages"
 export * from "./menu-items"

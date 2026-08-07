@@ -75,7 +75,7 @@ type AdminSocketContextValue = {
   whatsappSupportByConversation: Record<string, WhatsappSupportConversationMeta>
   whatsappSupportPendingCount: number
   acknowledgeWhatsappSupportConversation: (conversationId: string) => void
-  /** Evento `admin:order` con payload discriminado (created / status_changed). */
+  /** Evento `admin:order` con payload discriminado (created / status / payment proofs). */
   subscribeToOrderRealtime: (
     cb: (payload: AdminOrderRealtimePayload) => void,
   ) => () => void
@@ -100,12 +100,27 @@ function isMessagesPath(path: string): boolean {
 
 const AdminSocketContext = createContext<AdminSocketContextValue | null>(null)
 
+function shouldNotifyBellForOrder(payload: AdminOrderRealtimePayload): boolean {
+  return (
+    payload.type === "order.created" ||
+    payload.type === "order.status_changed" ||
+    payload.type === "order.payment_status_changed" ||
+    payload.type === "order.payment_proof_checked"
+  )
+}
+
 function notificationTitleForOrder(payload: AdminOrderRealtimePayload): string {
   switch (payload.type) {
     case "order.created":
       return "Nuevo pedido"
     case "order.status_changed":
       return "Estado del pedido actualizado"
+    case "order.payment_status_changed":
+      return "Estado de pago actualizado"
+    case "order.payment_proof_checked":
+      return "Comprobante de transferencia"
+    case "order.payment_proof_received":
+      return "Comprobante recibido"
     default:
       return "Pedido"
   }
@@ -122,6 +137,10 @@ function notificationSubtitleForOrder(
       return payload.total != null ? String(payload.total) : undefined
     case "order.status_changed":
       return getOrderStatusLabelEs(payload.status)
+    case "order.payment_status_changed":
+      return payload.payment_status
+    case "order.payment_proof_checked":
+      return payload.message
     default:
       return undefined
   }
@@ -307,6 +326,45 @@ export function AdminSocketProvider({ children }: { children: React.ReactNode })
           /* noop */
         }
       })
+
+      if (p.type === "order.payment_proof_checked") {
+        const orderQuery = encodeURIComponent(p.orderId)
+        const proofQuery = encodeURIComponent(p.proofId)
+        const openOrder = () => {
+          routerRef.current.push(
+            `/orders?orderId=${orderQuery}&proofId=${proofQuery}`,
+          )
+        }
+
+        toast.custom(
+          (tid) => (
+            <button
+              type="button"
+              className="group flex w-full max-w-sm flex-col gap-0.5 rounded-lg border border-emerald-400/70 bg-emerald-50 px-3 py-3 text-left text-emerald-950 shadow-md transition hover:bg-emerald-100/90"
+              onClick={() => {
+                toast.dismiss(tid)
+                openOrder()
+              }}
+            >
+              <span className="text-sm font-semibold leading-snug">
+                Comprobante de transferencia
+              </span>
+              <span className="text-xs leading-snug text-emerald-900/90">
+                {p.message}
+              </span>
+              <span className="pt-0.5 text-[11px] font-medium text-emerald-800 underline-offset-2 group-hover:underline">
+                Tocar para abrir el pedido #{p.orderRef}
+              </span>
+            </button>
+          ),
+          { duration: 60_000 },
+        )
+      }
+
+      // `payment_proof_received`: solo listeners (refetch). Sin toast ni campana.
+      if (!shouldNotifyBellForOrder(p)) {
+        return
+      }
 
       const path = pathnameRef.current
       const read = path === "/orders"

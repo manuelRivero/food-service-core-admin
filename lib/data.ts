@@ -45,6 +45,8 @@ export interface Order {
   status: OrderStatus
   /** Cobro acordado o registrado (`OrderPaymentStatus`); independiente de `status`. */
   paymentStatus: string
+  /** Método de pago acordado (p. ej. `transfer`, `cash`); null si el API no lo envía. */
+  paymentMethod: string | null
   currencyCode: string
   totalAmount: number | null
   /** Costo de envío; null si no es DELIVERY o no tiene zona configurada. */
@@ -135,6 +137,7 @@ export const orders: Order[] = [
     conversationId: "f0000001-0000-4000-8000-000000000001",
     status: "delivered",
     paymentStatus: "paid",
+    paymentMethod: null,
     currencyCode: "ARS",
     totalAmount: 125.0,
     deliveryFee: null,
@@ -194,6 +197,7 @@ export const orders: Order[] = [
     conversationId: "f0000002-0000-4000-8000-000000000002",
     status: "preparing",
     paymentStatus: "unpaid",
+    paymentMethod: null,
     currencyCode: "ARS",
     totalAmount: 89.5,
     deliveryFee: null,
@@ -215,6 +219,7 @@ export const orders: Order[] = [
     conversationId: null,
     status: "confirmed",
     paymentStatus: "unpaid",
+    paymentMethod: null,
     currencyCode: "ARS",
     totalAmount: 245.0,
     deliveryFee: null,
@@ -240,6 +245,7 @@ export const orders: Order[] = [
     conversationId: "f0000004-0000-4000-8000-000000000004",
     status: "delivered",
     paymentStatus: "paid",
+    paymentMethod: null,
     currencyCode: "ARS",
     totalAmount: 67.25,
     deliveryFee: null,
@@ -263,6 +269,7 @@ export const orders: Order[] = [
     conversationId: null,
     status: "cancelled",
     paymentStatus: "unpaid",
+    paymentMethod: null,
     currencyCode: "ARS",
     totalAmount: 190.0,
     deliveryFee: null,
@@ -289,6 +296,7 @@ export const orders: Order[] = [
     conversationId: "f0000006-0000-4000-8000-000000000006",
     status: "preparing",
     paymentStatus: "unpaid",
+    paymentMethod: null,
     currencyCode: "ARS",
     totalAmount: 312.5,
     deliveryFee: null,
@@ -310,6 +318,7 @@ export const orders: Order[] = [
     conversationId: null,
     status: "draft",
     paymentStatus: "unpaid",
+    paymentMethod: null,
     currencyCode: "ARS",
     totalAmount: 78.0,
     deliveryFee: null,
@@ -332,6 +341,7 @@ export const orders: Order[] = [
     conversationId: "f0000008-0000-4000-8000-000000000008",
     status: "delivered",
     paymentStatus: "paid",
+    paymentMethod: null,
     currencyCode: "ARS",
     totalAmount: 156.75,
     deliveryFee: null,

@@ -77,6 +77,8 @@ export interface AdminOrderRaw {
   status: string
   /** Si el backend aún no lo envía, se asume `deferred`. */
   payment_status?: string | null
+  /** p. ej. `transfer`, `cash`, `mercadopago`. */
+  payment_method?: string | null
   currency_code: string
   total_amount: string | number | null
   /** Costo de envío; null si no es DELIVERY o no tiene zona configurada. */
@@ -222,6 +224,7 @@ export function mapAdminOrderToOrder(raw: AdminOrderRaw): Order {
     conversationId: raw.conversation_id,
     status: raw.status,
     paymentStatus: raw.payment_status ?? "unpaid",
+    paymentMethod: raw.payment_method?.trim() || null,
     currencyCode: raw.currency_code,
     totalAmount: parseDecimal(raw.total_amount),
     deliveryFee: parseDecimal(raw.delivery_fee),

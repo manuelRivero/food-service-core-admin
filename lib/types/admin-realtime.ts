@@ -23,6 +23,29 @@ export type AdminOrderRealtimePayload =
       status: string
       at: string
     }
+  | {
+      type: "order.payment_status_changed"
+      businessId: string
+      orderId: string
+      payment_status: string
+      at: string
+    }
+  | {
+      type: "order.payment_proof_received"
+      businessId: string
+      orderId: string
+      proofId: string
+      at: string
+    }
+  | {
+      type: "order.payment_proof_checked"
+      businessId: string
+      orderId: string
+      orderRef: string
+      proofId: string
+      message: string
+      at: string
+    }
 
 export function isAdminOrderRealtimePayload(
   value: unknown,
@@ -42,6 +65,32 @@ export function isAdminOrderRealtimePayload(
       typeof o.businessId === "string" &&
       typeof o.orderId === "string" &&
       typeof o.status === "string" &&
+      typeof o.at === "string"
+    )
+  }
+  if (t === "order.payment_status_changed") {
+    return (
+      typeof o.businessId === "string" &&
+      typeof o.orderId === "string" &&
+      typeof o.payment_status === "string" &&
+      typeof o.at === "string"
+    )
+  }
+  if (t === "order.payment_proof_received") {
+    return (
+      typeof o.businessId === "string" &&
+      typeof o.orderId === "string" &&
+      typeof o.proofId === "string" &&
+      typeof o.at === "string"
+    )
+  }
+  if (t === "order.payment_proof_checked") {
+    return (
+      typeof o.businessId === "string" &&
+      typeof o.orderId === "string" &&
+      typeof o.orderRef === "string" &&
+      typeof o.proofId === "string" &&
+      typeof o.message === "string" &&
       typeof o.at === "string"
     )
   }

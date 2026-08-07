@@ -75,7 +75,11 @@ export function Header() {
       return
     }
     removeNotification(n.id)
-    router.push(n.kind === "order" ? "/orders" : "/reservations")
+    if (n.kind === "order") {
+      router.push(`/orders?orderId=${encodeURIComponent(n.resourceId)}`)
+      return
+    }
+    router.push("/reservations")
   }
 
   return (

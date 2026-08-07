@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { isAxiosError } from "axios"
 
 import { useAdminSocket } from "@/contexts/admin-socket-context"
@@ -51,7 +52,12 @@ function orderMatchesFilter(orderStatus: string, filter: string): boolean {
 
 const ORDER_HIGHLIGHT_MS = 12_000
 
-export default function OrdersPage() {
+function OrdersPageContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const deepLinkOrderId = searchParams.get("orderId")
+  const deepLinkProofId = searchParams.get("proofId")
+
   const { subscribeToOrderRealtime } = useAdminSocket()
   const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
@@ -107,8 +113,7 @@ export default function OrdersPage() {
       setOrders([])
       if (isAxiosError(e)) {
         const msg =
-          (e.response?.data as { message?: string })?.message ??
-          e.message
+          (e.response?.data as { message?: string })?.message ?? e.message
         setError(
           typeof msg === "string" && msg
             ? msg
@@ -126,22 +131,30 @@ export default function OrdersPage() {
     void loadOrders()
   }, [loadOrders])
 
-  const mergeOrderIntoList = useCallback((order: Order) => {
-    setOrders((prev) => {
-      const existed = prev.some((o) => o.id === order.id)
-      const matches = orderMatchesFilter(order.status, statusFilter)
-      if (!matches) {
-        if (existed) {
-          setMeta((m) => ({ ...m, total: Math.max(0, m.total - 1) }))
+  const mergeOrderIntoList = useCallback(
+    (order: Order) => {
+      setOrders((prev) => {
+        const existed = prev.some((o) => o.id === order.id)
+        const matches = orderMatchesFilter(order.status, statusFilter)
+        if (!matches) {
+          if (existed) {
+            setMeta((m) => ({ ...m, total: Math.max(0, m.total - 1) }))
+          }
+          return prev.filter((o) => o.id !== order.id)
         }
-        return prev.filter((o) => o.id !== order.id)
-      }
-      if (!existed) {
-        setMeta((m) => ({ ...m, total: m.total + 1 }))
-      }
-      return [order, ...prev.filter((o) => o.id !== order.id)]
-    })
-  }, [statusFilter])
+        if (!existed) {
+          setMeta((m) => ({ ...m, total: m.total + 1 }))
+        }
+        return [order, ...prev.filter((o) => o.id !== order.id)]
+      })
+    },
+    [statusFilter],
+  )
+
+  const clearDeepLink = useCallback(() => {
+    if (!deepLinkOrderId && !deepLinkProofId) return
+    router.replace("/orders", { scroll: false })
+  }, [deepLinkOrderId, deepLinkProofId, router])
 
   useEffect(() => {
     return subscribeToOrderRealtime((payload) => {
@@ -173,7 +186,8 @@ export default function OrdersPage() {
           })()
           break
         }
-        case "order.status_changed": {
+        case "order.status_changed":
+        case "order.payment_status_changed": {
           const orderId = payload.orderId
           void (async () => {
             try {
@@ -277,6 +291,9 @@ export default function OrdersPage() {
         isLoading={loading}
         highlightOrderIds={highlightOrderIds}
         onOrderPatched={mergeOrderIntoList}
+        deepLinkOrderId={deepLinkOrderId}
+        deepLinkProofId={deepLinkProofId}
+        onDeepLinkConsumed={clearDeepLink}
       />
 
       {!loading && meta.totalPages > 1 ? (
@@ -298,14 +315,20 @@ export default function OrdersPage() {
             variant="outline"
             size="sm"
             disabled={!canNext}
-            onClick={() =>
-              setPage((p) => Math.min(meta.totalPages, p + 1))
-            }
+            onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
           >
             Siguiente
           </Button>
         </div>
       ) : null}
     </div>
+  )
+}
+
+export default function OrdersPage() {
+  return (
+    <Suspense fallback={null}>
+      <OrdersPageContent />
+    </Suspense>
   )
 }
