@@ -19,6 +19,7 @@ import {
   Building2,
   CreditCard,
   BadgePercent,
+  Sparkles,
 } from "lucide-react"
 
 import {
@@ -57,6 +58,12 @@ const navItems: {
     title: "Menú",
     href: "/menu-items",
     icon: UtensilsCrossed,
+    allowedRoles: ["ADMIN", "OWNER"],
+  },
+  {
+    title: "Promociones",
+    href: "/promotions",
+    icon: Sparkles,
     allowedRoles: ["ADMIN", "OWNER"],
   },
   {
