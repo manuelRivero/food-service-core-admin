@@ -23,7 +23,12 @@ import {
   fetchAdminOrderById,
   fetchAdminOrders,
   mapAdminOrderToOrder,
+  type AdminOrdersAssignmentFilter,
 } from "@/lib/requests/orders"
+import {
+  fetchDeliveryBusinessUsers,
+  type BusinessUser,
+} from "@/lib/requests/business-users"
 
 function monthBoundsISO() {
   const now = new Date()
@@ -34,6 +39,21 @@ function monthBoundsISO() {
     to: to.toISOString().slice(0, 10),
   }
 }
+
+const ASSIGNMENT_FILTER_OPTIONS: {
+  value: "all" | AdminOrdersAssignmentFilter
+  label: string
+}[] = [
+  { value: "all", label: "Todos" },
+  { value: "assigned", label: "Con repartidor" },
+  { value: "unassigned", label: "Sin repartidor" },
+]
+
+const FULFILLMENT_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "all", label: "Todos" },
+  { value: "DELIVERY", label: "Delivery" },
+  { value: "PICKUP", label: "Retiro" },
+]
 
 const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: ADMIN_ORDERS_STATUS_ALL, label: "Todos" },
@@ -73,6 +93,12 @@ function OrdersPageContent() {
   const [statusFilter, setStatusFilter] = useState<string>(
     ADMIN_ORDERS_STATUS_ALL,
   )
+  const [assignmentFilter, setAssignmentFilter] = useState<
+    "all" | AdminOrdersAssignmentFilter
+  >("all")
+  const [fulfillmentFilter, setFulfillmentFilter] = useState("all")
+  const [deliveryUserFilter, setDeliveryUserFilter] = useState("all")
+  const [deliveryUsers, setDeliveryUsers] = useState<BusinessUser[]>([])
 
   const [orders, setOrders] = useState<Order[]>([])
   const [meta, setMeta] = useState({
@@ -90,7 +116,21 @@ function OrdersPageContent() {
 
   useEffect(() => {
     setPage(1)
-  }, [dateFrom, dateTo, debouncedPhone, statusFilter])
+  }, [
+    dateFrom,
+    dateTo,
+    debouncedPhone,
+    statusFilter,
+    assignmentFilter,
+    fulfillmentFilter,
+    deliveryUserFilter,
+  ])
+
+  useEffect(() => {
+    void fetchDeliveryBusinessUsers()
+      .then(setDeliveryUsers)
+      .catch(() => setDeliveryUsers([]))
+  }, [])
 
   const loadOrders = useCallback(async () => {
     setLoading(true)
@@ -102,6 +142,13 @@ function OrdersPageContent() {
         dateTo,
         customerPhone: debouncedPhone.trim() || undefined,
         status: statusFilter,
+        ...(assignmentFilter !== "all" ? { assignment: assignmentFilter } : {}),
+        ...(deliveryUserFilter !== "all"
+          ? { assignedDeliveryUserId: deliveryUserFilter }
+          : {}),
+        ...(fulfillmentFilter !== "all"
+          ? { fulfillmentType: fulfillmentFilter }
+          : {}),
       })
       setOrders(data.items.map(mapAdminOrderToOrder))
       setMeta({
@@ -125,7 +172,16 @@ function OrdersPageContent() {
     } finally {
       setLoading(false)
     }
-  }, [page, dateFrom, dateTo, debouncedPhone, statusFilter])
+  }, [
+    page,
+    dateFrom,
+    dateTo,
+    debouncedPhone,
+    statusFilter,
+    assignmentFilter,
+    fulfillmentFilter,
+    deliveryUserFilter,
+  ])
 
   useEffect(() => {
     void loadOrders()
@@ -259,6 +315,63 @@ function OrdersPageContent() {
             </SelectTrigger>
             <SelectContent>
               {STATUS_FILTER_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="orders-assignment">Asignación</Label>
+          <Select
+            value={assignmentFilter}
+            onValueChange={(v) =>
+              setAssignmentFilter(v as "all" | AdminOrdersAssignmentFilter)
+            }
+          >
+            <SelectTrigger id="orders-assignment" className="w-[12rem]">
+              <SelectValue placeholder="Asignación" />
+            </SelectTrigger>
+            <SelectContent>
+              {ASSIGNMENT_FILTER_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="orders-delivery-user">Repartidor</Label>
+          <Select
+            value={deliveryUserFilter}
+            onValueChange={setDeliveryUserFilter}
+          >
+            <SelectTrigger id="orders-delivery-user" className="w-[12rem]">
+              <SelectValue placeholder="Repartidor" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              {deliveryUsers.map((user) => (
+                <SelectItem key={user.id} value={user.id}>
+                  {user.name?.trim() || user.email}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="orders-fulfillment">Modalidad</Label>
+          <Select
+            value={fulfillmentFilter}
+            onValueChange={setFulfillmentFilter}
+          >
+            <SelectTrigger id="orders-fulfillment" className="w-[12rem]">
+              <SelectValue placeholder="Modalidad" />
+            </SelectTrigger>
+            <SelectContent>
+              {FULFILLMENT_FILTER_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
                 </SelectItem>

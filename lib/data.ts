@@ -36,6 +36,14 @@ export interface OrderLineItem {
 /** Snapshot JSON (`orders.delivery_address_snapshot`) — claves habituales de `customer_address` */
 export type DeliveryAddressSnapshot = Record<string, unknown>
 
+/** Repartidor asignado (`assigned_delivery_user` en el API). */
+export interface AssignedDeliveryUser {
+  /** ID de la membresía en el negocio. */
+  id: string
+  email: string
+  name: string | null
+}
+
 export interface Order {
   id: string
   businessId: string
@@ -58,6 +66,13 @@ export interface Order {
   deliveryAddressSnapshot: DeliveryAddressSnapshot | null
   customer: OrderCustomer
   items: OrderLineItem[]
+  /** Repartidor asignado; null si no hay o no aplica. */
+  assignedDeliveryUser: AssignedDeliveryUser | null
+}
+
+/** Pedido con entrega a domicilio (tiene dirección de envío). */
+export function orderIsDeliveryFulfillment(order: Order): boolean {
+  return Boolean(summarizeDeliverySnapshot(order.deliveryAddressSnapshot))
 }
 
 export function orderCustomerLabel(c: OrderCustomer): string {
@@ -189,6 +204,7 @@ export const orders: Order[] = [
         null,
       ),
     ],
+    assignedDeliveryUser: null,
   },
   {
     id: "22222222-2222-4222-8222-222222222202",
@@ -211,6 +227,7 @@ export const orders: Order[] = [
       line("oi202", "m0000006-0000-4000-8000-000000000006", "BBQ Ribs (half rack)", 1, 29.5, 2),
       line("oi203", "m0000007-0000-4000-8000-000000000007", "Garlic Bread & dips combo", 1, 30.0, null),
     ],
+    assignedDeliveryUser: null,
   },
   {
     id: "33333333-3333-4333-8333-333333333303",
@@ -237,6 +254,7 @@ export const orders: Order[] = [
       line("oi302", "m0000009-0000-4000-8000-000000000009", "Wine pairing", 2, 35.0, 2),
       line("oi303", "m0000010-0000-4000-8000-000000000010", "Espresso", 2, 2.5, null),
     ],
+    assignedDeliveryUser: null,
   },
   {
     id: "44444444-4444-4444-8444-444444444404",
@@ -261,6 +279,7 @@ export const orders: Order[] = [
       line("oi404", "m0000014-0000-4000-8000-000000000014", "Mango Lassi", 2, 5.5, null),
       line("oi405", "m0000015-0000-4000-8000-000000000015", "Gulab Jamun", 1, 26.25, null),
     ],
+    assignedDeliveryUser: null,
   },
   {
     id: "55555555-5555-4555-8555-555555555505",
@@ -288,6 +307,7 @@ export const orders: Order[] = [
       line("oi503", "m0000018-0000-4000-8000-000000000018", "Caesar Side Salad", 2, 20.0, null),
       line("oi504", "m0000019-0000-4000-8000-000000000019", "Old Fashioned cocktail", 2, 18.0, null),
     ],
+    assignedDeliveryUser: null,
   },
   {
     id: "66666666-6666-4666-8666-666666666606",
@@ -310,6 +330,7 @@ export const orders: Order[] = [
       line("oi602", "m0000021-0000-4000-8000-000000000021", "Grill surf & turf bundle", 1, 100.0, 4),
       line("oi603", "m0000022-0000-4000-8000-000000000022", "Desserts & beverages bundle", 1, 112.5, null),
     ],
+    assignedDeliveryUser: null,
   },
   {
     id: "77777777-7777-4777-8777-777777777707",
@@ -333,6 +354,7 @@ export const orders: Order[] = [
       line("oi703", "m0000025-0000-4000-8000-000000000025", "Green Smoothie", 2, 10.0, null),
       line("oi704", "m0000026-0000-4000-8000-000000000026", "Brownie", 1, 8.0, null),
     ],
+    assignedDeliveryUser: null,
   },
   {
     id: "88888888-8888-4888-8888-888888888808",
@@ -361,6 +383,7 @@ export const orders: Order[] = [
       line("oi803", "m0000029-0000-4000-8000-000000000029", "Edamame", 2, 5.0, null),
       line("oi804", "m0000030-0000-4000-8000-000000000030", "Green Tea Ice Cream", 2, 6.875, null),
     ],
+    assignedDeliveryUser: null,
   },
 ]
 

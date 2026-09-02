@@ -18,10 +18,12 @@ export interface DeliveryOrderItem {
 
 export interface DeliveryOrder {
   id: string
+  shortId: string
   customerName: string
   customerPhone: string
   address: string
   totalPrice: number
+  currencyCode: string
   status: "pending" | "out_for_delivery" | "delivered"
   items: DeliveryOrderItem[]
 }
@@ -57,7 +59,7 @@ export function OrderCard({ order }: OrderCardProps) {
             {/* Header */}
             <div className="flex items-center gap-2">
               <span className="font-mono text-sm font-semibold text-muted-foreground">
-                #{order.id}
+                #{order.shortId}
               </span>
               <Badge variant={status.variant}>{status.label}</Badge>
             </div>
@@ -82,7 +84,10 @@ export function OrderCard({ order }: OrderCardProps) {
             {/* Price */}
             <div className="pt-1">
               <span className="text-lg font-bold">
-                ${order.totalPrice.toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                {new Intl.NumberFormat("es-AR", {
+                  style: "currency",
+                  currency: order.currencyCode || "ARS",
+                }).format(order.totalPrice)}
               </span>
             </div>
 

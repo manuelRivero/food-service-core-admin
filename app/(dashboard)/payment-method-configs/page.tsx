@@ -45,6 +45,11 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   Empty,
   EmptyDescription,
   EmptyHeader,
@@ -62,15 +67,19 @@ import {
   updatePaymentMethodConfig,
 } from "@/lib/requests/payment-method-configs"
 import { CreditCard } from "lucide-react"
+import {
+  getPaymentMethodLabel,
+  isValidPaymentMethodId,
+  PAYMENT_METHOD_OPTIONS,
+  type PaymentMethodId,
+} from "@/lib/constants/paymentMethods"
 
-const COMMON_PAYMENT_METHODS = [
-  { value: "cash", label: "Efectivo" },
-  { value: "online", label: "Online" },
-  { value: "transfer", label: "Transferencia" },
-]
+const ALL_METHODS_CONFIGURED_MESSAGE = "Ya configuraste todos los métodos de pago"
+const PAYMENT_METHOD_ALREADY_CONFIGURED_MESSAGE =
+  "Este método de pago ya tiene un ajuste configurado"
 
 interface FormState {
-  paymentMethod: string
+  paymentMethod: PaymentMethodId | ""
   label: string
   adjustmentType: "PERCENT" | "FIXED"
   adjustmentValue: string
@@ -96,7 +105,7 @@ const emptyForm: FormState = {
 }
 
 function isTransferMethod(paymentMethod: string): boolean {
-  return paymentMethod.trim().toLowerCase() === "transfer"
+  return paymentMethod === "transfer"
 }
 
 interface FormErrors {
@@ -107,8 +116,10 @@ interface FormErrors {
 
 function validateForm(form: FormState): FormErrors {
   const errors: FormErrors = {}
-  if (!form.paymentMethod.trim()) {
-    errors.paymentMethod = "El identificador del método es requerido"
+  if (!form.paymentMethod) {
+    errors.paymentMethod = "El método de pago es requerido"
+  } else if (!isValidPaymentMethodId(form.paymentMethod)) {
+    errors.paymentMethod = "Seleccioná un método de pago válido"
   }
   if (!form.label.trim()) {
     errors.label = "La etiqueta es requerida"
@@ -163,9 +174,23 @@ export default function PaymentMethodConfigsPage() {
     void loadConfigs()
   }, [loadConfigs])
 
+  const isEditMode = editingConfig != null
+  const usedPaymentMethods = new Set(configs.map((c) => c.paymentMethod))
+  const availablePaymentMethodOptions = PAYMENT_METHOD_OPTIONS.filter(
+    (opt) => !usedPaymentMethods.has(opt.value),
+  )
+  const canCreateMore = availablePaymentMethodOptions.length > 0
+  const paymentMethodSelectOptions = isEditMode
+    ? PAYMENT_METHOD_OPTIONS.filter((opt) => opt.value === form.paymentMethod)
+    : availablePaymentMethodOptions
+
   const openCreate = () => {
+    if (!canCreateMore) return
     setEditingConfig(null)
-    setForm(emptyForm)
+    setForm({
+      ...emptyForm,
+      paymentMethod: availablePaymentMethodOptions[0]?.value ?? "",
+    })
     setFormErrors({})
     setDialogOpen(true)
   }
@@ -173,7 +198,9 @@ export default function PaymentMethodConfigsPage() {
   const openEdit = (config: AdminPaymentMethodConfig) => {
     setEditingConfig(config)
     setForm({
-      paymentMethod: config.paymentMethod,
+      paymentMethod: isValidPaymentMethodId(config.paymentMethod)
+        ? config.paymentMethod
+        : "",
       label: config.label,
       adjustmentType: config.adjustmentType,
       adjustmentValue: String(config.adjustmentValue),
@@ -204,7 +231,7 @@ export default function PaymentMethodConfigsPage() {
     setIsSaving(true)
     try {
       const adjustmentValue = Number(form.adjustmentValue.trim().replace(",", "."))
-      const paymentMethod = form.paymentMethod.trim()
+      const paymentMethod = form.paymentMethod
       const transfer = isTransferMethod(paymentMethod)
       const bankFields = {
         bankAlias: transfer ? emptyToNull(form.bankAlias) : null,
@@ -242,6 +269,21 @@ export default function PaymentMethodConfigsPage() {
       }
       setDialogOpen(false)
     } catch (e) {
+      if (isAxiosError(e) && e.response?.status === 409 && !editingConfig) {
+        const errData = e.response.data as { message?: string; error?: string }
+        const msg =
+          errData?.message ??
+          (typeof errData?.error === "string" ? errData.error : null) ??
+          PAYMENT_METHOD_ALREADY_CONFIGURED_MESSAGE
+        setFormErrors((prev) => ({
+          ...prev,
+          paymentMethod: PAYMENT_METHOD_ALREADY_CONFIGURED_MESSAGE,
+        }))
+        toast.error(msg)
+        void loadConfigs()
+        return
+      }
+
       const errData = isAxiosError(e)
         ? (e.response?.data as { error?: string | { fieldErrors?: Record<string, string[]> }; message?: string })
         : null
@@ -308,10 +350,24 @@ export default function PaymentMethodConfigsPage() {
             Configura descuentos o recargos según el método de pago elegido por el cliente.
           </p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="mr-1.5 size-4" />
-          Agregar ajuste
-        </Button>
+        {canCreateMore ? (
+          <Button onClick={openCreate}>
+            <Plus className="mr-1.5 size-4" />
+            Agregar ajuste
+          </Button>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Button disabled>
+                  <Plus className="mr-1.5 size-4" />
+                  Agregar ajuste
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{ALL_METHODS_CONFIGURED_MESSAGE}</TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       {isLoading ? (
@@ -336,8 +392,8 @@ export default function PaymentMethodConfigsPage() {
                 <div className="flex flex-col gap-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{config.label}</span>
-                    <Badge variant="outline" className="font-mono text-xs">
-                      {config.paymentMethod}
+                    <Badge variant="outline" className="text-xs">
+                      {getPaymentMethodLabel(config.paymentMethod)}
                     </Badge>
                     <Badge
                       variant={config.isSurcharge ? "destructive" : "secondary"}
@@ -431,27 +487,31 @@ export default function PaymentMethodConfigsPage() {
                 htmlFor="paymentMethod"
                 className={formErrors.paymentMethod ? "text-destructive" : ""}
               >
-                Identificador del método
+                Método de pago
                 <span className="text-destructive ml-1">*</span>
               </Label>
-              <Input
-                id="paymentMethod"
-                list="paymentMethodSuggestions"
-                placeholder="Ej: cash, online, transfer"
-                value={form.paymentMethod}
-                onChange={(e) => updateFormField("paymentMethod", e.target.value)}
-                disabled={isSaving}
-                aria-invalid={!!formErrors.paymentMethod}
-                className={formErrors.paymentMethod ? "border-destructive" : ""}
-              />
-              <datalist id="paymentMethodSuggestions">
-                {COMMON_PAYMENT_METHODS.map((m) => (
-                  <option key={m.value} value={m.value} />
-                ))}
-              </datalist>
-              <p className="text-xs text-muted-foreground">
-                Valores comunes: cash, online, transfer. Podés ingresar un valor personalizado.
-              </p>
+              <Select
+                value={form.paymentMethod || undefined}
+                onValueChange={(v) =>
+                  updateFormField("paymentMethod", v as PaymentMethodId)
+                }
+                disabled={isSaving || isEditMode || paymentMethodSelectOptions.length === 0}
+              >
+                <SelectTrigger
+                  id="paymentMethod"
+                  aria-invalid={!!formErrors.paymentMethod}
+                  className={formErrors.paymentMethod ? "border-destructive" : ""}
+                >
+                  <SelectValue placeholder="Seleccioná un método de pago" />
+                </SelectTrigger>
+                <SelectContent>
+                  {paymentMethodSelectOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {formErrors.paymentMethod && (
                 <p className="text-sm text-destructive">{formErrors.paymentMethod}</p>
               )}
@@ -638,7 +698,10 @@ export default function PaymentMethodConfigsPage() {
               >
                 Cancelar
               </Button>
-              <Button onClick={() => void handleSave()} disabled={isSaving}>
+              <Button
+                onClick={() => void handleSave()}
+                disabled={isSaving || (!isEditMode && !canCreateMore)}
+              >
                 {isSaving
                   ? "Guardando…"
                   : editingConfig
@@ -660,7 +723,9 @@ export default function PaymentMethodConfigsPage() {
             <AlertDialogTitle>¿Eliminar ajuste?</AlertDialogTitle>
             <AlertDialogDescription>
               Esta acción eliminará la configuración{" "}
-              <strong>{deleteTarget?.label}</strong> ({deleteTarget?.paymentMethod}).
+              <strong>{deleteTarget?.label}</strong> (
+              {deleteTarget ? getPaymentMethodLabel(deleteTarget.paymentMethod) : ""}
+              ).
               No se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>

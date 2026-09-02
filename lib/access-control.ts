@@ -112,6 +112,9 @@ export function canAccessPath(role: UserRole, pathname: string): boolean {
   if (pathname === "/promotions" || pathname.startsWith("/promotions/")) {
     return role === "ADMIN" || role === "OWNER"
   }
+  if (pathname === "/users" || pathname.startsWith("/users/")) {
+    return role === "ADMIN" || role === "OWNER"
+  }
 
   return true
 }

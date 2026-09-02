@@ -16,6 +16,7 @@ interface ResultModalProps {
   onOpenChange: (open: boolean) => void
   success: boolean
   order?: DeliveryOrder | null
+  errorMessage?: string
   onConfirm: () => void
   onTryAgain: () => void
   isConfirming?: boolean
@@ -26,6 +27,7 @@ export function ResultModal({
   onOpenChange,
   success,
   order,
+  errorMessage,
   onConfirm,
   onTryAgain,
   isConfirming = false,
@@ -51,7 +53,8 @@ export function ResultModal({
           <DialogDescription>
             {success
               ? "La orden fue actualizada correctamente a estado entregado."
-              : "Verifica el QR y vuelve a intentarlo."}
+              : errorMessage ||
+                "Verificá el QR y volvé a intentarlo. Solo podés confirmar pedidos asignados a vos."}
           </DialogDescription>
         </DialogHeader>
 
@@ -60,7 +63,7 @@ export function ResultModal({
             <div className="flex items-center gap-2 text-sm">
               <PackageIcon className="h-4 w-4 text-muted-foreground shrink-0" />
               <span className="text-muted-foreground">Pedido:</span>
-              <span className="font-mono font-semibold">#{order.id}</span>
+              <span className="font-mono font-semibold">#{order.shortId}</span>
             </div>
             <div className="flex items-center gap-2 text-sm">
               <UserIcon className="h-4 w-4 text-muted-foreground shrink-0" />

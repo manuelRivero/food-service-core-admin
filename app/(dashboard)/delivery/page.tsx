@@ -11,66 +11,17 @@ import { DeliveryQrScanner } from "@/components/delivery/delivery-qr-scanner"
 import { ResultModal } from "@/components/delivery/result-modal"
 import type { DeliveryOrder, DeliveryOrderItem } from "@/components/delivery/order-card"
 import {
+  confirmDeliveryByQr,
   fetchAdminOrders,
   mapAdminOrderToOrder,
-  patchAdminOrderStatus,
 } from "@/lib/requests/orders"
-import { summarizeDeliverySnapshot, type Order } from "@/lib/data"
-
-// Mock data for delivery orders
-const mockOrders: DeliveryOrder[] = [
-  {
-    id: "ORD-001",
-    customerName: "Maria Garcia",
-    customerPhone: "+52 55 1111 1111",
-    address: "Av. Insurgentes Sur 1234, Col. Del Valle, CDMX",
-    totalPrice: 245.50,
-    status: "out_for_delivery",
-    items: [
-      { id: "item-1", name: "Hamburguesa clasica", quantity: 2 },
-      { id: "item-2", name: "Papas fritas", quantity: 1 },
-    ],
-  },
-  {
-    id: "ORD-002",
-    customerName: "Carlos Rodriguez",
-    customerPhone: "+52 55 2222 2222",
-    address: "Calle Reforma 567, Col. Juarez, CDMX",
-    totalPrice: 189.00,
-    status: "out_for_delivery",
-    items: [
-      { id: "item-3", name: "Pizza pepperoni", quantity: 1 },
-      { id: "item-4", name: "Refresco", quantity: 2 },
-    ],
-  },
-  {
-    id: "ORD-003",
-    customerName: "Ana Martinez",
-    customerPhone: "+52 55 3333 3333",
-    address: "Blvd. Miguel de Cervantes 890, Col. Granada, CDMX",
-    totalPrice: 312.75,
-    status: "pending",
-    items: [
-      { id: "item-5", name: "Sushi mix", quantity: 2 },
-      { id: "item-6", name: "Sopa miso", quantity: 2 },
-    ],
-  },
-  {
-    id: "ORD-004",
-    customerName: "Jose Lopez",
-    customerPhone: "+52 55 4444 4444",
-    address: "Av. Revolucion 234, Col. San Angel, CDMX",
-    totalPrice: 156.25,
-    status: "out_for_delivery",
-    items: [{ id: "item-7", name: "Tacos al pastor", quantity: 3 }],
-  },
-]
+import { formatShortOrderId, summarizeDeliverySnapshot, type Order } from "@/lib/data"
 
 type DeliveryFlow =
   | { step: "idle" }
   | { step: "permission" }
   | { step: "scanning" }
-  | { step: "result"; success: boolean; scannedOrder?: DeliveryOrder }
+  | { step: "result"; success: boolean; scannedOrder?: DeliveryOrder; message?: string }
 
 function monthBoundsISO() {
   const now = new Date()
@@ -98,10 +49,14 @@ function mapOrderToDeliveryOrder(order: Order): DeliveryOrder {
 
   return {
     id: order.id,
+    shortId: formatShortOrderId(order.id),
     customerName: order.customer.name?.trim() || "Cliente sin nombre",
-    customerPhone: order.customer.phoneNumber || "Telefono no disponible",
-    address: summarizeDeliverySnapshot(order.deliveryAddressSnapshot) || "Direccion no disponible",
+    customerPhone: order.customer.phoneNumber || "Teléfono no disponible",
+    address:
+      summarizeDeliverySnapshot(order.deliveryAddressSnapshot) ||
+      "Dirección no disponible",
     totalPrice: order.totalAmount ?? 0,
+    currencyCode: order.currencyCode,
     status,
     items,
   }
@@ -119,7 +74,6 @@ export default function DeliveryPage() {
   const [isConfirming, setIsConfirming] = useState(false)
   const [activeTab, setActiveTab] = useState<"pending" | "delivered">("pending")
 
-  // Load orders
   const loadOrders = useCallback(async () => {
     setIsLoading(true)
     setError(null)
@@ -128,27 +82,33 @@ export default function DeliveryPage() {
         page: 1,
         dateFrom: bounds.from,
         dateTo: bounds.to,
-        // Usamos el mismo servicio de pedidos; luego segmentamos por estado.
-        status: undefined,
+        fulfillmentType: "DELIVERY",
       })
       const mapped = data.items
         .map(mapAdminOrderToOrder)
         .map(mapOrderToDeliveryOrder)
-        .filter((order) => order.status === "out_for_delivery" || order.status === "delivered")
+        .filter(
+          (order) =>
+            order.status === "out_for_delivery" || order.status === "delivered",
+        )
       setOrders(mapped)
     } catch (e) {
-      setOrders(
-        mockOrders.filter((o) => o.status === "out_for_delivery" || o.status === "delivered")
-      )
+      setOrders([])
       if (isAxiosError(e)) {
-        const msg = (e.response?.data as { message?: string })?.message ?? e.message
-        setError(
-          typeof msg === "string" && msg
-            ? msg
-            : "No se pudieron cargar los pedidos. Por favor, intenta de nuevo.",
-        )
+        const status = e.response?.status
+        const msg =
+          (e.response?.data as { message?: string })?.message ?? e.message
+        if (status === 403) {
+          setError("No tenés permiso para ver estos pedidos.")
+        } else {
+          setError(
+            typeof msg === "string" && msg
+              ? msg
+              : "No se pudieron cargar los pedidos. Por favor, intentá de nuevo.",
+          )
+        }
       } else {
-        setError("No se pudieron cargar los pedidos. Por favor, intenta de nuevo.")
+        setError("No se pudieron cargar los pedidos. Por favor, intentá de nuevo.")
       }
     } finally {
       setIsLoading(false)
@@ -156,7 +116,7 @@ export default function DeliveryPage() {
   }, [bounds.from, bounds.to])
 
   useEffect(() => {
-    loadOrders()
+    void loadOrders()
   }, [loadOrders])
 
   const handleStartScan = () => {
@@ -164,7 +124,6 @@ export default function DeliveryPage() {
     setFlow({ step: "permission" })
   }
 
-  // Request camera permission
   const handleRequestPermission = async () => {
     if (flow.step !== "permission") return
 
@@ -175,39 +134,45 @@ export default function DeliveryPage() {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
       })
-      // Stop the stream immediately, we just needed to check permission
       stream.getTracks().forEach((track) => track.stop())
-      // Move to scanning
       setFlow({ step: "scanning" })
     } catch (err) {
-      const error = err as Error
-      if (error.name === "NotAllowedError") {
-        setPermissionError("Permiso de camara denegado. Habilita el acceso en la configuracion de tu navegador.")
+      const scanError = err as Error
+      if (scanError.name === "NotAllowedError") {
+        setPermissionError(
+          "Permiso de cámara denegado. Habilitá el acceso en la configuración de tu navegador.",
+        )
       } else {
-        setPermissionError(error.message || "Error al acceder a la camara.")
+        setPermissionError(scanError.message || "Error al acceder a la cámara.")
       }
     } finally {
       setIsRequesting(false)
     }
   }
 
-  // Handle QR scan
   const handleScan = async (data: string) => {
     if (flow.step !== "scanning") return
 
     setIsProcessing(true)
-    setError(null)
 
     try {
-      const orderId = data.trim()
-      if (!orderId) {
-        throw new Error("El QR no contiene un id de orden valido.")
+      const qrData = data.trim()
+      if (!qrData) {
+        throw new Error("El QR no contiene datos válidos.")
       }
 
-      const { order } = await patchAdminOrderStatus(orderId, "delivered")
-      const mappedOrder = mapOrderToDeliveryOrder(order)
+      const result = await confirmDeliveryByQr(qrData)
+      if (!result.delivered || !result.order) {
+        throw new Error(
+          result.message || "No se pudo confirmar la entrega de este pedido.",
+        )
+      }
+
+      const mappedOrder = mapOrderToDeliveryOrder(result.order)
       setOrders((prev) => {
-        const withoutCurrent = prev.filter((current) => current.id !== mappedOrder.id)
+        const withoutCurrent = prev.filter(
+          (current) => current.id !== mappedOrder.id,
+        )
         return [mappedOrder, ...withoutCurrent]
       })
 
@@ -218,29 +183,30 @@ export default function DeliveryPage() {
       })
       setActiveTab("delivered")
     } catch (err) {
+      let message = "No se pudo marcar la orden como entregada."
       if (isAxiosError(err)) {
-        const msg = (err.response?.data as { message?: string })?.message ?? err.message
-        setError(
-          typeof msg === "string" && msg
-            ? msg
-            : "No se pudo marcar la orden como entregada.",
-        )
-      } else {
-        const msg = err instanceof Error ? err.message : "No se pudo marcar la orden como entregada."
-        setError(msg)
+        const status = err.response?.status
+        const apiMsg =
+          (err.response?.data as { message?: string })?.message ?? err.message
+        if (status === 403) {
+          message =
+            "Este pedido no está asignado a vos o no tenés permiso para confirmarlo."
+        } else if (typeof apiMsg === "string" && apiMsg) {
+          message = apiMsg
+        }
+      } else if (err instanceof Error && err.message) {
+        message = err.message
       }
-      setFlow({ step: "result", success: false })
+      setFlow({ step: "result", success: false, message })
     } finally {
       setIsProcessing(false)
     }
   }
 
-  // Handle scan cancel
   const handleScanCancel = () => {
     setFlow({ step: "idle" })
   }
 
-  // Handle confirm delivery
   const handleConfirmDelivery = async () => {
     if (flow.step !== "result" || !flow.success) return
 
@@ -248,15 +214,14 @@ export default function DeliveryPage() {
     await new Promise((resolve) => setTimeout(resolve, 300))
     setIsConfirming(false)
     setFlow({ step: "idle" })
+    void loadOrders()
   }
 
-  // Handle try again
   const handleTryAgain = () => {
     if (flow.step !== "result") return
     setFlow({ step: "scanning" })
   }
 
-  // Close modals
   const handleClosePermission = (open: boolean) => {
     if (!open) {
       setFlow({ step: "idle" })
@@ -272,11 +237,11 @@ export default function DeliveryPage() {
 
   const pendingOrders = useMemo(
     () => orders.filter((order) => order.status === "out_for_delivery"),
-    [orders]
+    [orders],
   )
   const deliveredOrders = useMemo(
     () => orders.filter((order) => order.status === "delivered"),
-    [orders]
+    [orders],
   )
 
   return (
@@ -286,7 +251,6 @@ export default function DeliveryPage() {
         onValueChange={(value) => setActiveTab(value as "pending" | "delivered")}
         className="flex-1"
       >
-        {/* Header */}
         <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <div className="flex min-h-16 items-center justify-between gap-3 px-4 py-3">
             <div className="flex items-center gap-3">
@@ -296,7 +260,9 @@ export default function DeliveryPage() {
               <div>
                 <h1 className="text-lg font-semibold">Mis entregas</h1>
                 <p className="text-xs text-muted-foreground">
-                  {pendingOrders.length} pedidos pendientes
+                  {pendingOrders.length} pedido
+                  {pendingOrders.length === 1 ? "" : "s"} pendiente
+                  {pendingOrders.length === 1 ? "" : "s"}
                 </p>
               </div>
             </div>
@@ -307,13 +273,16 @@ export default function DeliveryPage() {
           </div>
           <div className="px-4 pb-3">
             <TabsList>
-              <TabsTrigger value="pending">Pendientes por entregar ({pendingOrders.length})</TabsTrigger>
-              <TabsTrigger value="delivered">Entregados ({deliveredOrders.length})</TabsTrigger>
+              <TabsTrigger value="pending">
+                Pendientes por entregar ({pendingOrders.length})
+              </TabsTrigger>
+              <TabsTrigger value="delivered">
+                Entregados ({deliveredOrders.length})
+              </TabsTrigger>
             </TabsList>
           </div>
         </header>
 
-        {/* Content */}
         <main className="flex-1 p-4">
           <TabsContent value="pending">
             <OrdersList
@@ -334,7 +303,6 @@ export default function DeliveryPage() {
         </main>
       </Tabs>
 
-      {/* Permission Modal */}
       <PermissionModal
         open={flow.step === "permission"}
         onOpenChange={handleClosePermission}
@@ -344,7 +312,6 @@ export default function DeliveryPage() {
         onRetry={handleRequestPermission}
       />
 
-      {/* QR Scanner (Full screen) */}
       {flow.step === "scanning" && (
         <DeliveryQrScanner
           onScan={handleScan}
@@ -353,12 +320,12 @@ export default function DeliveryPage() {
         />
       )}
 
-      {/* Result Modal */}
       <ResultModal
         open={flow.step === "result"}
         onOpenChange={handleCloseResult}
         success={flow.step === "result" ? flow.success : false}
         order={flow.step === "result" ? flow.scannedOrder : null}
+        errorMessage={flow.step === "result" ? flow.message : undefined}
         onConfirm={handleConfirmDelivery}
         onTryAgain={handleTryAgain}
         isConfirming={isConfirming}

@@ -68,3 +68,15 @@ export function getUserRoleFromToken(token: string | null | undefined): UserRole
 export function getUserRoleFromCookie(): UserRole {
   return getUserRoleFromToken(getAuthCookie())
 }
+
+export function getUserIdFromToken(token: string | null | undefined): string | null {
+  if (!token) return null
+  const payload = decodeJwtPayload(token)
+  if (!payload) return null
+  const userId = payload.userId ?? payload.sub
+  return typeof userId === "string" && userId.trim() ? userId : null
+}
+
+export function getUserIdFromCookie(): string | null {
+  return getUserIdFromToken(getAuthCookie())
+}

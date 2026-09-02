@@ -1,6 +1,11 @@
 import { api } from "@/lib/api"
 import type { AdminPatchableOrderStatus } from "@/lib/constants/orderWorkflow"
-import type { Order, OrderCustomer, OrderLineItem } from "@/lib/data"
+import type {
+  AssignedDeliveryUser,
+  Order,
+  OrderCustomer,
+  OrderLineItem,
+} from "@/lib/data"
 
 /** Relativo a `NEXT_PUBLIC_API` (si ya incluye `/api`, no repetir `/api` en la ruta). */
 export const ADMIN_ORDERS_PATH = "/admin/orders"
@@ -15,6 +20,8 @@ function parseDecimal(v: string | number | null | undefined): number | null {
 /** Valor especial: no se envía `status` al API (todos los estados). */
 export const ADMIN_ORDERS_STATUS_ALL = "all" as const
 
+export type AdminOrdersAssignmentFilter = "assigned" | "unassigned"
+
 export interface AdminOrdersListParams {
   page: number
   dateFrom: string
@@ -22,6 +29,12 @@ export interface AdminOrdersListParams {
   customerPhone?: string
   /** Si es `all` u omite, el backend no filtra por estado. */
   status?: string
+  /** Solo admin: pedidos con o sin repartidor asignado. */
+  assignment?: AdminOrdersAssignmentFilter
+  /** Solo admin: filtrar por repartidor asignado (membresía UUID). */
+  assignedDeliveryUserId?: string
+  /** Solo admin: p. ej. `DELIVERY`, `PICKUP`. */
+  fulfillmentType?: string
 }
 
 export interface AdminOrdersListResponse {
@@ -69,6 +82,14 @@ export interface AdminCustomerAddressRaw {
   label?: string | null
 }
 
+export interface AdminAssignedDeliveryUserRaw {
+  id: string
+  app_user?: {
+    email?: string | null
+    name?: string | null
+  } | null
+}
+
 export interface AdminOrderRaw {
   id: string
   business_id: string
@@ -91,6 +112,7 @@ export interface AdminOrderRaw {
   customer?: AdminCustomerRaw | null
   customer_address?: AdminCustomerAddressRaw | null
   order_item: AdminOrderItemRaw[]
+  assigned_delivery_user?: AdminAssignedDeliveryUserRaw | null
 }
 
 export async function fetchAdminOrderById(id: string) {
@@ -117,6 +139,22 @@ export async function patchAdminOrderStatus(
     customerNotified: data.customerNotified,
     notificationReason: data.notificationReason,
   }
+}
+
+export interface PatchAdminOrderDeliveryAssignmentResponseRaw {
+  order: AdminOrderRaw
+}
+
+/** Asigna o desasigna repartidor (solo OWNER/ADMIN). */
+export async function patchAdminOrderDeliveryAssignment(
+  id: string,
+  assignedDeliveryUserId: string | null,
+) {
+  const { data } = await api.patch<PatchAdminOrderDeliveryAssignmentResponseRaw>(
+    `${ADMIN_ORDERS_PATH}/${id}/delivery-assignment`,
+    { assignedDeliveryUserId },
+  )
+  return mapAdminOrderToOrder(data.order)
 }
 
 export interface ConfirmDeliveryByQrResponseRaw {
@@ -159,9 +197,31 @@ export async function fetchAdminOrders(params: AdminOrdersListParams) {
         ? { customerPhone: params.customerPhone.trim() }
         : {}),
       ...(statusParam ? { status: statusParam } : {}),
+      ...(params.assignment ? { assignment: params.assignment } : {}),
+      ...(params.assignedDeliveryUserId?.trim()
+        ? { assignedDeliveryUserId: params.assignedDeliveryUserId.trim() }
+        : {}),
+      ...(params.fulfillmentType?.trim()
+        ? { fulfillmentType: params.fulfillmentType.trim() }
+        : {}),
     },
   })
   return data
+}
+
+function mapAssignedDeliveryUser(
+  raw: AdminAssignedDeliveryUserRaw | null | undefined,
+): AssignedDeliveryUser | null {
+  if (!raw?.id) return null
+  const appUser = raw.app_user
+  return {
+    id: String(raw.id),
+    email: String(appUser?.email ?? ""),
+    name:
+      typeof appUser?.name === "string" && appUser.name.trim()
+        ? appUser.name.trim()
+        : null,
+  }
 }
 
 function snapshotFromCustomerAddress(
@@ -234,5 +294,6 @@ export function mapAdminOrderToOrder(raw: AdminOrderRaw): Order {
     deliveryAddressSnapshot: delivery,
     customer: mapCustomer(raw),
     items: mapLineItems(raw),
+    assignedDeliveryUser: mapAssignedDeliveryUser(raw.assigned_delivery_user),
   }
 }

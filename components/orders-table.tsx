@@ -36,7 +36,9 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { OrderPaymentProofs } from "@/components/order-payment-proofs"
+import { OrderDeliveryAssignmentField } from "@/components/orders/delivery-assignment-field"
 import { cn } from "@/lib/utils"
+import { getUserRoleFromCookie } from "@/lib/auth"
 import {
   ADMIN_PATCH_ORDER_LABEL_ES,
   getNextPatchableOrderStatus,
@@ -50,6 +52,7 @@ import {
   formatOrderMoney,
   formatShortOrderId,
   orderCustomerLabel,
+  orderIsDeliveryFulfillment,
   summarizeDeliverySnapshot,
   type Order,
 } from "@/lib/data"
@@ -85,6 +88,12 @@ export function OrdersTable({
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
   const [highlightProofId, setHighlightProofId] = useState<string | null>(null)
   const [deepLinkLoading, setDeepLinkLoading] = useState(false)
+  const [canAssignDelivery, setCanAssignDelivery] = useState(false)
+
+  useEffect(() => {
+    const role = getUserRoleFromCookie()
+    setCanAssignDelivery(role === "OWNER" || role === "ADMIN")
+  }, [])
 
   const handleViewDetails = (order: Order, proofId?: string | null) => {
     setSelectedOrder(order)
@@ -155,6 +164,15 @@ export function OrdersTable({
         prev?.id === result.order.id ? result.order : prev,
       )
       toast.success("Estado de envío actualizado")
+      if (
+        newStatus === "shipped" &&
+        orderIsDeliveryFulfillment(result.order) &&
+        !result.order.assignedDeliveryUser
+      ) {
+        setSelectedOrder(result.order)
+        setDetailsOpen(true)
+        toast.info("Asigná un repartidor para este pedido de delivery.")
+      }
       if (!result.customerNotified) {
         toast.warning(
           result.notificationReason
@@ -255,7 +273,20 @@ export function OrdersTable({
                     </TableCell>
                     <TableCell>{orderCustomerLabel(order.customer)}</TableCell>
                     <TableCell>
-                      <OrderStatusBadge status={order.status} />
+                      <div className="flex flex-col gap-1">
+                        <OrderStatusBadge status={order.status} />
+                        {order.assignedDeliveryUser ? (
+                          <span className="text-xs text-muted-foreground">
+                            {order.assignedDeliveryUser.name?.trim() ||
+                              order.assignedDeliveryUser.email}
+                          </span>
+                        ) : orderIsDeliveryFulfillment(order) &&
+                          order.status === "shipped" ? (
+                          <span className="text-xs text-amber-600 dark:text-amber-400">
+                            Sin repartidor
+                          </span>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <OrderPaymentStatusBadge
@@ -394,6 +425,22 @@ export function OrdersTable({
                       )}
                     </p>
                   </div>
+                </>
+              ) : null}
+
+              {orderIsDeliveryFulfillment(selectedOrder) &&
+              (selectedOrder.status === "shipped" ||
+                selectedOrder.status === "delivered") ? (
+                <>
+                  <Separator />
+                  <OrderDeliveryAssignmentField
+                    order={selectedOrder}
+                    canAssign={canAssignDelivery}
+                    onOrderPatched={(order) => {
+                      setSelectedOrder(order)
+                      onOrderPatched?.(order)
+                    }}
+                  />
                 </>
               ) : null}
 

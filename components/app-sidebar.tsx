@@ -20,6 +20,7 @@ import {
   CreditCard,
   BadgePercent,
   Sparkles,
+  Users,
 } from "lucide-react"
 
 import {
@@ -123,6 +124,12 @@ const navItems: {
     title: "Ajustes de pago",
     href: "/payment-method-configs",
     icon: BadgePercent,
+    allowedRoles: ["ADMIN", "OWNER"],
+  },
+  {
+    title: "Usuarios",
+    href: "/users",
+    icon: Users,
     allowedRoles: ["ADMIN", "OWNER"],
   },
   {
